@@ -1,0 +1,103 @@
+use core::str::FromStr;
+
+use string_interner::StringInterner;
+use string_interner::backend::StringBackend;
+
+use crate::ast::*;
+
+grammar(interner: &mut StringInterner<StringBackend<Symbol>>);
+
+pub Program: ProgramAST = {
+    FuncList => ProgramAST { funcs: <> },
+}
+
+FuncList: Vec<FunctionAST> = {
+    => Vec::new(),
+    <mut l:FuncList> <x:Func> => {
+        l.push(x);
+        l
+    }
+}
+
+Func: FunctionAST = {
+    "fn" <i:Iden> "(" <p:Params> ")" <b:Block> => FunctionAST { name: interner.get_or_intern(i), params: p, block: b },
+}
+
+Params: Vec<Symbol> = {
+    => Vec::new(),
+    <x:Iden> => {
+        let mut v = Vec::new();
+        v.push(interner.get_or_intern(x));
+        v
+    },
+    <mut l:Params> "," <x:Iden?> => {
+        match x {
+            None => l,
+            Some(x) => { l.push(interner.get_or_intern(x)); l }
+        }
+    }
+}
+
+Block: BlockAST = {
+    "{" <StmtList> "}" => BlockAST { stmts: <> },
+}
+
+StmtList: Vec<StatementAST> = {
+    => Vec::new(),
+    <mut l:StmtList> <x:Stmt> => {
+        l.push(x);
+        l
+    }
+}
+
+Stmt: StatementAST = {
+    Block => StatementAST::Block(<>),
+    <i:Iden> "=" <e:Expr> ";" => StatementAST::Assign(interner.get_or_intern(i), e),
+    "if" <c:Expr> <tb:Block> <fb:("else" <Block>)?> => StatementAST::IfElse(c, tb, fb),
+    "while" <c:Expr> <b:Block> => StatementAST::While(c, b),
+    "return" <e:Expr> ";" => StatementAST::Return(e),
+}
+
+Expr: ExpressionAST = {
+    #[precedence(level="0")]
+    Atomic,
+    #[precedence(level="1")] #[assoc(side="left")]
+    <lhs:Expr> "*" <rhs:Expr> => ExpressionAST::Multiply(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> "/" <rhs:Expr> => ExpressionAST::Divide(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> "%" <rhs:Expr> => ExpressionAST::Modulo(Box::new(lhs), Box::new(rhs)),
+    #[precedence(level="2")] #[assoc(side="left")]
+    <lhs:Expr> "+" <rhs:Expr> => ExpressionAST::Add(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> "-" <rhs:Expr> => ExpressionAST::Subtract(Box::new(lhs), Box::new(rhs)),
+    #[precedence(level="3")] #[assoc(side="left")]
+    <lhs:Expr> "==" <rhs:Expr> => ExpressionAST::EqualsEquals(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> "!=" <rhs:Expr> => ExpressionAST::NotEquals(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> "<" <rhs:Expr> => ExpressionAST::Less(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> "<=" <rhs:Expr> => ExpressionAST::LessEquals(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> ">" <rhs:Expr> => ExpressionAST::Greater(Box::new(lhs), Box::new(rhs)),
+    <lhs:Expr> ">=" <rhs:Expr> => ExpressionAST::GreaterEquals(Box::new(lhs), Box::new(rhs)),
+}
+
+Atomic: ExpressionAST = {
+    Num => ExpressionAST::NumberLiteral(<>),
+    Iden => ExpressionAST::Variable(interner.get_or_intern(<>)),
+    <i:Iden> "(" <a:Args> ")" => ExpressionAST::Call(interner.get_or_intern(i), a),
+    "(" <Expr> ")",
+}
+
+Args: Vec<ExpressionAST> = {
+    => Vec::new(),
+    <x:Expr> => {
+        let mut v = Vec::new();
+        v.push(x);
+        v
+    },
+    <mut l:Args> "," <x:Expr?> => {
+        match x {
+            None => l,
+            Some(x) => { l.push(x); l }
+        }
+    }
+}
+
+Num: i32 = r"-?[0-9]+" => i32::from_str(<>).unwrap();
+Iden: &'input str = r"[a-zA-Z_][a-zA-Z0-9_]*" => <>;

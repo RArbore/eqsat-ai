@@ -1,0 +1,11 @@
+[package]
+name = "imp"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+lalrpop = "*"
+
+[dependencies]
+lalrpop-util = { version = "*", features = ["lexer", "unicode"] }
+string-interner = "*"
