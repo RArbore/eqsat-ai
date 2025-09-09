@@ -1,11 +1,8 @@
 use core::str::FromStr;
 
-use string_interner::StringInterner;
-use string_interner::backend::StringBackend;
-
 use crate::ast::*;
 
-grammar(interner: &mut StringInterner<StringBackend<Symbol>>);
+grammar(interner: &mut Interner);
 
 pub Program: ProgramAST = {
     FuncList => ProgramAST { funcs: <> },

@@ -12,6 +12,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai"
+version = "0.1.0"
+dependencies = [
+ "imp",
+]
+
+[[package]]
 name = "ascii-canvas"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
