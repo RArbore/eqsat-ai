@@ -39,12 +39,13 @@ where
             Some(ad)
         }
         IfElse(expr, true_block, false_block) => {
-            let _val = ad.forward_transfer(expr);
-            let true_ad = ai_block(ad.clone(), true_block, unique_id);
+            let _cond = ad.forward_transfer(expr);
+            let (true_ad, false_ad) = ad.branch();
+            let true_ad = ai_block(true_ad, true_block, unique_id);
             let false_ad = if let Some(false_block) = false_block {
-                ai_block(ad, false_block, unique_id)
+                ai_block(false_ad, false_block, unique_id)
             } else {
-                Some(ad)
+                Some(false_ad)
             };
 
             match (true_ad, false_ad) {
@@ -53,7 +54,23 @@ where
                 (None, None) => None
             }
         }
-        While(_expr, _block) => todo!(),
+        While(expr, block) => {
+            let unique_id_fix = *unique_id;
+            let init = ad.clone();
+            loop {
+                let _cond = ad.forward_transfer(expr);
+                let (cont, exit) = ad.clone().branch();
+                let Some(bottom) = ai_block(cont, block, unique_id) else {
+                    break Some(exit);
+                };
+                let widened = bottom.widen(&init, unique_id_fix);
+                if ad == widened {
+                    break Some(exit);
+                } else {
+                    ad = widened;
+                }
+            }
+        }
         Return(expr) => {
             let val = ad.forward_transfer(expr);
             ad.finish(val, *unique_id);
