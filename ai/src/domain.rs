@@ -1,3 +1,4 @@
+use core::cell::RefCell;
 use std::collections::BTreeMap;
 
 pub trait AbstractDomain: Clone + PartialEq {
@@ -32,13 +33,17 @@ pub trait ForwardTransfer {
         AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
 }
 
-pub type LatticeDomain<Variable, Value> = BTreeMap<Variable, Value>;
+#[derive(Clone, Debug, PartialEq)]
+pub struct LatticeDomain<'a, Variable, Value> {
+    var_to_val: BTreeMap<Variable, Value>,
+    finished: &'a RefCell<BTreeMap<usize, Value>>,
+}
 
 impl<
     Variable: Clone + PartialEq + Ord,
-    Expression,
     Value: Clone + PartialEq + Lattice + ForwardTransfer<Variable = Variable, Expression = Expression>,
-> AbstractDomain for LatticeDomain<Variable, Value>
+    Expression,
+> AbstractDomain for LatticeDomain<'_, Variable, Value>
 {
     type Variable = Variable;
     type Value = Value;
@@ -53,23 +58,25 @@ impl<
     }
 
     fn lookup(&self, var: Variable) -> Value {
-        self.get(&var).unwrap_or(&Value::top()).clone()
+        self.var_to_val.get(&var).unwrap_or(&Value::top()).clone()
     }
 
     fn assign(&mut self, var: Variable, val: Value) {
-        self.insert(var, val);
+        self.var_to_val.insert(var, val);
     }
 
     fn branch(self) -> (Self, Self) {
         (self.clone(), self)
     }
 
-    fn finish(self, _returned: Value, _unique_id: usize) {}
+    fn finish(self, returned: Value, unique_id: usize) {
+        self.finished.borrow_mut().insert(unique_id, returned);
+    }
 
     fn join(&self, other: &Self) -> Self {
-        let mut intervals = Self::new();
-        let mut self_iter = self.iter();
-        let mut other_iter = other.iter();
+        let mut intervals = BTreeMap::new();
+        let mut self_iter = self.var_to_val.iter();
+        let mut other_iter = other.var_to_val.iter();
         let mut m_self_pair = self_iter.next();
         let mut m_other_pair = other_iter.next();
         while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
@@ -81,13 +88,16 @@ impl<
                 intervals.insert(self_pair.0.clone(), self_pair.1.join(&other_pair.1));
             }
         }
-        intervals
+        Self {
+            var_to_val: intervals,
+            finished: self.finished,
+        }
     }
 
     fn widen(&self, other: &Self, _unique_id: usize) -> Self {
-        let mut intervals = Self::new();
-        let mut self_iter = self.iter();
-        let mut other_iter = other.iter();
+        let mut intervals = BTreeMap::new();
+        let mut self_iter = self.var_to_val.iter();
+        let mut other_iter = other.var_to_val.iter();
         let mut m_self_pair = self_iter.next();
         let mut m_other_pair = other_iter.next();
         while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
@@ -99,6 +109,9 @@ impl<
                 intervals.insert(self_pair.0.clone(), self_pair.1.widen(&other_pair.1));
             }
         }
-        intervals
+        Self {
+            var_to_val: intervals,
+            finished: self.finished,
+        }
     }
 }
