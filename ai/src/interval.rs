@@ -189,7 +189,7 @@ impl AbstractDomain for IntervalDomain<Symbol> {
         (self.clone(), self)
     }
 
-    fn finish(self, _returned: Interval) {}
+    fn finish(self, _returned: Interval, _unique_id: usize) {}
 
     fn join(&self, other: &Self) -> Self {
         let mut intervals = Self::new();

@@ -8,7 +8,7 @@ pub trait AbstractDomain: Clone + PartialEq {
     fn lookup(&self, var: Self::Variable) -> Self::Value;
     fn assign(&mut self, var: Self::Variable, val: Self::Value);
     fn branch(self) -> (Self, Self);
-    fn finish(self, returned: Self::Value);
+    fn finish(self, returned: Self::Value, unique_id: usize);
     fn join(&self, other: &Self) -> Self;
     fn widen(&self, other: &Self, unique_id: usize) -> Self;
 }
