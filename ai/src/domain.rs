@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 pub trait AbstractDomain: Clone + PartialEq {
     type Variable;
     type Value;
@@ -11,4 +13,92 @@ pub trait AbstractDomain: Clone + PartialEq {
     fn finish(self, returned: Self::Value, unique_id: usize);
     fn join(&self, other: &Self) -> Self;
     fn widen(&self, other: &Self, unique_id: usize) -> Self;
+}
+
+pub trait Lattice {
+    fn top() -> Self;
+    fn bottom() -> Self;
+    fn join(&self, other: &Self) -> Self;
+    fn meet(&self, other: &Self) -> Self;
+    fn widen(&self, other: &Self) -> Self;
+}
+
+pub trait ForwardTransfer {
+    type Variable;
+    type Expression;
+
+    fn forward_transfer<AD>(expr: &Self::Expression, ad: &AD) -> Self
+    where
+        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
+}
+
+pub type LatticeDomain<Variable, Value> = BTreeMap<Variable, Value>;
+
+impl<
+    Variable: Clone + PartialEq + Ord,
+    Expression,
+    Value: Clone + PartialEq + Lattice + ForwardTransfer<Variable = Variable, Expression = Expression>,
+> AbstractDomain for LatticeDomain<Variable, Value>
+{
+    type Variable = Variable;
+    type Value = Value;
+    type Expression = Expression;
+
+    fn bottom(&self) -> Value {
+        Value::bottom()
+    }
+
+    fn forward_transfer(&self, expr: &Expression) -> Value {
+        Value::forward_transfer(expr, self)
+    }
+
+    fn lookup(&self, var: Variable) -> Value {
+        self.get(&var).unwrap_or(&Value::top()).clone()
+    }
+
+    fn assign(&mut self, var: Variable, val: Value) {
+        self.insert(var, val);
+    }
+
+    fn branch(self) -> (Self, Self) {
+        (self.clone(), self)
+    }
+
+    fn finish(self, _returned: Value, _unique_id: usize) {}
+
+    fn join(&self, other: &Self) -> Self {
+        let mut intervals = Self::new();
+        let mut self_iter = self.iter();
+        let mut other_iter = other.iter();
+        let mut m_self_pair = self_iter.next();
+        let mut m_other_pair = other_iter.next();
+        while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
+            if self_pair.0 < other_pair.0 {
+                m_self_pair = self_iter.next();
+            } else if self_pair.0 > other_pair.0 {
+                m_other_pair = other_iter.next();
+            } else {
+                intervals.insert(self_pair.0.clone(), self_pair.1.join(&other_pair.1));
+            }
+        }
+        intervals
+    }
+
+    fn widen(&self, other: &Self, _unique_id: usize) -> Self {
+        let mut intervals = Self::new();
+        let mut self_iter = self.iter();
+        let mut other_iter = other.iter();
+        let mut m_self_pair = self_iter.next();
+        let mut m_other_pair = other_iter.next();
+        while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
+            if self_pair.0 < other_pair.0 {
+                m_self_pair = self_iter.next();
+            } else if self_pair.0 > other_pair.0 {
+                m_other_pair = other_iter.next();
+            } else {
+                intervals.insert(self_pair.0.clone(), self_pair.1.widen(&other_pair.1));
+            }
+        }
+        intervals
+    }
 }
