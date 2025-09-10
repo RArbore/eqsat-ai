@@ -7,8 +7,8 @@ use crate::domain::{AbstractDomain, ForwardTransfer, Lattice};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Interval {
-    low: i32,
-    high: i32,
+    pub low: i32,
+    pub high: i32,
 }
 
 impl Lattice for Interval {

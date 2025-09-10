@@ -39,6 +39,15 @@ pub struct LatticeDomain<'a, Variable, Value> {
     finished: &'a RefCell<BTreeMap<usize, Value>>,
 }
 
+impl<'a, Variable, Value> LatticeDomain<'a, Variable, Value> {
+    pub fn new(finished: &'a RefCell<BTreeMap<usize, Value>>) -> Self {
+        Self {
+            var_to_val: BTreeMap::new(),
+            finished,
+        }
+    }
+}
+
 impl<
     Variable: Clone + PartialEq + Ord,
     Value: Clone + PartialEq + Lattice + ForwardTransfer<Variable = Variable, Expression = Expression>,
@@ -86,6 +95,8 @@ impl<
                 m_other_pair = other_iter.next();
             } else {
                 intervals.insert(self_pair.0.clone(), self_pair.1.join(&other_pair.1));
+                m_self_pair = self_iter.next();
+                m_other_pair = other_iter.next();
             }
         }
         Self {
@@ -107,6 +118,8 @@ impl<
                 m_other_pair = other_iter.next();
             } else {
                 intervals.insert(self_pair.0.clone(), self_pair.1.widen(&other_pair.1));
+                m_self_pair = self_iter.next();
+                m_other_pair = other_iter.next();
             }
         }
         Self {

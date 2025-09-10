@@ -51,7 +51,7 @@ where
             match (true_ad, false_ad) {
                 (Some(true_ad), Some(false_ad)) => Some(true_ad.join(&false_ad)),
                 (Some(ad), None) | (None, Some(ad)) => Some(ad),
-                (None, None) => None
+                (None, None) => None,
             }
         }
         While(expr, block) => {
@@ -63,7 +63,7 @@ where
                 let Some(bottom) = ai_block(cont, block, unique_id) else {
                     break Some(exit);
                 };
-                let widened = bottom.widen(&init, unique_id_fix);
+                let widened = init.widen(&bottom, unique_id_fix);
                 if ad == widened {
                     break Some(exit);
                 } else {
@@ -76,5 +76,54 @@ where
             ad.finish(val, *unique_id);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use core::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    use imp::ast::Interner;
+    use imp::grammar::ProgramParser;
+
+    use crate::domain::{Lattice, LatticeDomain};
+    use crate::interval::Interval;
+
+    #[test]
+    fn abstract_interpret1() {
+        let mut interner = Interner::new();
+        let program =
+            "fn basic(x, y) { if y { return (x < y) * 5; } else { return (y > x) - 3; } }";
+        let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
+        let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
+        ai_func(ad, &program.funcs[0]);
+        let joined = finished
+            .into_inner()
+            .values()
+            .map(|x| *x)
+            .reduce(|a, b| a.join(&b))
+            .unwrap();
+        assert_eq!(joined, Interval { low: -3, high: 5 });
+    }
+
+    #[test]
+    fn abstract_interpret2() {
+        let mut interner = Interner::new();
+        let program = "fn basic() { x = 10; while x { x = x / 2; } return x; }";
+        let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
+        let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
+        ai_func(ad, &program.funcs[0]);
+        assert_eq!(
+            finished.into_inner().into_iter().next().unwrap().1,
+            Interval {
+                low: i32::MIN,
+                high: 10
+            }
+        );
     }
 }
