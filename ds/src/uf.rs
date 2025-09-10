@@ -1,8 +1,18 @@
-use bincode::{Decode, Encode};
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct ClassId(u32);
+
+impl From<u32> for ClassId {
+    fn from(value: u32) -> Self {
+        ClassId(value)
+    }
+}
+
+impl From<ClassId> for u32 {
+    fn from(value: ClassId) -> Self {
+        value.0
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnionFind {
