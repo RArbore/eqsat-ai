@@ -249,14 +249,20 @@ pub struct ESSADomain<'a> {
     var_to_val: BTreeMap<Symbol, ClassId>,
     num_params: &'a Cell<u32>,
     graph: &'a RefCell<EGraph<Term>>,
+    static_phis: &'a RefCell<BTreeMap<usize, BTreeMap<Symbol, (ClassId, ClassId)>>>,
 }
 
 impl<'a> ESSADomain<'a> {
-    pub fn new(num_params: &'a Cell<u32>, graph: &'a RefCell<EGraph<Term>>) -> Self {
+    pub fn new(
+        num_params: &'a Cell<u32>,
+        graph: &'a RefCell<EGraph<Term>>,
+        static_phis: &'a RefCell<BTreeMap<usize, BTreeMap<Symbol, (ClassId, ClassId)>>>,
+    ) -> Self {
         Self {
             var_to_val: BTreeMap::new(),
             num_params,
             graph,
+            static_phis,
         }
     }
 }
@@ -287,6 +293,7 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
                 self.graph.borrow_mut().insert(&Term::Constant(*lit, root))
             }
             Variable(var) => self.lookup(*var),
+            Call(_, _) => todo!(),
             Add(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
@@ -371,7 +378,6 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
                     .borrow_mut()
                     .insert(&Term::GreaterEquals(lhs, rhs, root))
             }
-            _ => todo!(),
         }
     }
 
@@ -407,10 +413,49 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
             var_to_val,
             num_params: self.num_params,
             graph: self.graph,
+            static_phis: self.static_phis,
         }
     }
 
     fn widen(&self, other: &Self, unique_id: usize) -> Self {
-        todo!()
+        let mut static_phis_borrow = self.static_phis.borrow_mut();
+        let static_phis = static_phis_borrow.entry(unique_id).or_default();
+        let mut var_to_val = BTreeMap::new();
+        let mut new_static_phi = false;
+
+        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
+        {
+            let make_phi = || {
+                let phi = self.graph.borrow_mut().makeset();
+                self.graph.borrow_mut().insert(&Term::Phi(BlockId(0), *self_val, *other_val, phi))
+            };
+            if *self_val == *other_val {
+                var_to_val.insert(*var, *self_val);
+            } else if let Some(entry) = static_phis.get_mut(var) {
+                var_to_val.insert(*var, entry.0);
+                let last_expr = make_phi();
+                entry.1 = last_expr;
+            } else {
+                let static_phi = self.graph.borrow_mut().makeset();
+                let last_expr = make_phi();
+                static_phis.insert(*var, (static_phi, last_expr));
+                var_to_val.insert(*var, static_phi);
+                new_static_phi = true;
+            }
+        }
+
+        if !new_static_phi {
+            for (_, (static_phi, last_expr)) in static_phis {
+                self.graph.borrow_mut().merge(*static_phi, *last_expr);
+            }
+            static_phis_borrow.remove(&unique_id);
+        }
+
+        Self {
+            var_to_val,
+            num_params: self.num_params,
+            graph: self.graph,
+            static_phis: self.static_phis,
+        }
     }
 }
