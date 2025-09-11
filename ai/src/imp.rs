@@ -139,6 +139,7 @@ mod tests {
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis);
         ai_func(ad, &program.funcs[0]);
+        graph.borrow_mut().rebuild();
     }
 
     #[test]
@@ -151,5 +152,6 @@ mod tests {
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis);
         ai_func(ad, &program.funcs[0]);
+        graph.borrow_mut().rebuild();
     }
 }

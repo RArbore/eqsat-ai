@@ -190,6 +190,32 @@ impl SizeErasedTable {
             ),
         }
     }
+
+    fn delete_rows(&mut self, rows: &[usize]) {
+        use SizeErasedTable::*;
+        match self {
+            OneOne(table) => table.delete_rows(rows),
+            TwoOne(table) => table.delete_rows(rows),
+            ThreeOne(table) => table.delete_rows(rows),
+            FourOne(table) => table.delete_rows(rows),
+        }
+    }
+}
+
+fn canonicalize(uf: &mut UnionFind, det: &mut [u32], dep: &mut [u32], sig: Signature) -> bool {
+    let mut changed = false;
+    for class_id_col in sig.class_id_mask.iter_ones() {
+        let col = if class_id_col < det.len() {
+            &mut det[class_id_col]
+        } else {
+            &mut dep[class_id_col - det.len()]
+        };
+        let id = ClassId::from(*col);
+        let canon = uf.find(id);
+        changed = changed || id != canon;
+        *col = u32::from(canon);
+    }
+    changed
 }
 
 pub struct EGraph<T: ENode> {
@@ -207,22 +233,6 @@ impl<T: ENode> EGraph<T> {
         }
     }
 
-    fn canonicalize(&mut self, det: &mut [u32], dep: &mut [u32], sig: Signature) -> bool {
-        let mut changed = false;
-        for class_id_col in sig.class_id_mask.iter_ones() {
-            let col = if class_id_col < det.len() {
-                &mut det[class_id_col]
-            } else {
-                &mut dep[class_id_col - det.len()]
-            };
-            let id = ClassId::from(*col);
-            let canon = self.uf.find(id);
-            changed = changed || id != canon;
-            *col = u32::from(canon);
-        }
-        changed
-    }
-
     pub fn insert(&mut self, enode: &T) -> ClassId {
         const MAX_COLS: usize = 16;
         let mut encoded = [0u32; MAX_COLS];
@@ -231,16 +241,25 @@ impl<T: ENode> EGraph<T> {
         let (det, dep) =
             encoded[0..sig.num_det_cols + sig.num_dep_cols].split_at_mut(sig.num_det_cols);
         enode.encode_to_row(det, dep);
-        self.canonicalize(det, dep, sig);
-        let old_root = ClassId::from(dep[0]);
+        canonicalize(&mut self.uf, det, dep, sig);
         let table = self
             .tables
             .entry(sig)
             .or_insert_with(|| SizeErasedTable::new(det.len(), dep.len()));
+        Self::insert_or_merge(&mut self.uf, table, det, dep)
+    }
+
+    fn insert_or_merge(
+        uf: &mut UnionFind,
+        table: &mut SizeErasedTable,
+        det: &[u32],
+        dep: &[u32],
+    ) -> ClassId {
+        let old_root = ClassId::from(dep[0]);
         let new_dep = table.insert(det, dep);
         if let Some(new_dep) = new_dep {
             let new_root = ClassId::from(new_dep[0]);
-            self.uf.merge(old_root, new_root);
+            uf.merge(old_root, new_root);
             new_root
         } else {
             old_root
@@ -253,6 +272,49 @@ impl<T: ENode> EGraph<T> {
 
     pub fn merge(&mut self, a: ClassId, b: ClassId) -> ClassId {
         self.uf.merge(a, b)
+    }
+
+    pub fn rebuild(&mut self) {
+        loop {
+            let mut changed = false;
+            let mut deleted_rows: Vec<usize> = vec![];
+            let mut canonicalized_rows: Vec<u32> = vec![];
+
+            for (sig, table) in &mut self.tables {
+                deleted_rows.clear();
+                canonicalized_rows.clear();
+
+                for (det, dep, id) in table.rows() {
+                    let before_len = canonicalized_rows.len();
+                    canonicalized_rows.extend(det);
+                    canonicalized_rows.extend(dep);
+                    let row = &mut canonicalized_rows[before_len..];
+                    let (det, dep) = row.split_at_mut(sig.num_det_cols);
+                    if canonicalize(&mut self.uf, det, dep, *sig) {
+                        changed = true;
+                        deleted_rows.push(id);
+                    } else {
+                        canonicalized_rows.truncate(before_len);
+                    }
+                }
+
+                table.delete_rows(&deleted_rows);
+
+                let num_cols = sig.num_det_cols + sig.num_dep_cols;
+                assert_eq!(canonicalized_rows.len(), deleted_rows.len() * num_cols);
+                for idx in 0..deleted_rows.len() {
+                    let det =
+                        &canonicalized_rows[num_cols * idx..num_cols * idx + sig.num_det_cols];
+                    let dep = &canonicalized_rows
+                        [num_cols * idx + sig.num_det_cols..num_cols * (idx + 1)];
+                    Self::insert_or_merge(&mut self.uf, table, det, dep);
+                }
+            }
+
+            if !changed {
+                break;
+            }
+        }
     }
 }
 
