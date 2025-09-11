@@ -9,6 +9,7 @@ use ds::uf::ClassId;
 use imp::ast::{ExpressionAST, Symbol};
 
 use crate::domain::AbstractDomain;
+use crate::intersect_btree_maps;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -284,7 +285,7 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
             NumberLiteral(lit) => {
                 let root = self.graph.borrow_mut().makeset();
                 self.graph.borrow_mut().insert(&Term::Constant(*lit, root))
-            },
+            }
             Variable(var) => self.lookup(*var),
             Add(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
@@ -390,31 +391,17 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
 
     fn join(&self, other: &Self) -> Self {
         let mut var_to_val = BTreeMap::new();
-        let mut self_iter = self.var_to_val.iter();
-        let mut other_iter = other.var_to_val.iter();
-        let mut m_self_pair = self_iter.next();
-        let mut m_other_pair = other_iter.next();
-        while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
-            if self_pair.0 < other_pair.0 {
-                m_self_pair = self_iter.next();
-            } else if self_pair.0 > other_pair.0 {
-                m_other_pair = other_iter.next();
+        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
+        {
+            let root = if *self_val == *other_val {
+                *self_val
             } else {
-                let root = if *self_pair.1 == *other_pair.1 {
-                    *self_pair.1
-                } else {
-                    let root = self.graph.borrow_mut().makeset();
-                    self.graph.borrow_mut().insert(&Term::Phi(
-                        BlockId(0),
-                        *self_pair.1,
-                        *other_pair.1,
-                        root,
-                    ))
-                };
-                var_to_val.insert(self_pair.0.clone(), root);
-                m_self_pair = self_iter.next();
-                m_other_pair = other_iter.next();
-            }
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::Phi(BlockId(0), *self_val, *other_val, root))
+            };
+            var_to_val.insert(*var, root);
         }
         Self {
             var_to_val,

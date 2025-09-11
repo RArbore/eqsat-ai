@@ -1,6 +1,8 @@
 use core::cell::RefCell;
 use std::collections::BTreeMap;
 
+use crate::intersect_btree_maps;
+
 pub trait AbstractDomain: Clone + PartialEq {
     type Variable;
     type Value;
@@ -84,20 +86,8 @@ impl<
 
     fn join(&self, other: &Self) -> Self {
         let mut intervals = BTreeMap::new();
-        let mut self_iter = self.var_to_val.iter();
-        let mut other_iter = other.var_to_val.iter();
-        let mut m_self_pair = self_iter.next();
-        let mut m_other_pair = other_iter.next();
-        while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
-            if self_pair.0 < other_pair.0 {
-                m_self_pair = self_iter.next();
-            } else if self_pair.0 > other_pair.0 {
-                m_other_pair = other_iter.next();
-            } else {
-                intervals.insert(self_pair.0.clone(), self_pair.1.join(&other_pair.1));
-                m_self_pair = self_iter.next();
-                m_other_pair = other_iter.next();
-            }
+        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val) {
+            intervals.insert(var.clone(), self_val.join(other_val));
         }
         Self {
             var_to_val: intervals,
@@ -107,20 +97,8 @@ impl<
 
     fn widen(&self, other: &Self, _unique_id: usize) -> Self {
         let mut intervals = BTreeMap::new();
-        let mut self_iter = self.var_to_val.iter();
-        let mut other_iter = other.var_to_val.iter();
-        let mut m_self_pair = self_iter.next();
-        let mut m_other_pair = other_iter.next();
-        while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
-            if self_pair.0 < other_pair.0 {
-                m_self_pair = self_iter.next();
-            } else if self_pair.0 > other_pair.0 {
-                m_other_pair = other_iter.next();
-            } else {
-                intervals.insert(self_pair.0.clone(), self_pair.1.widen(&other_pair.1));
-                m_self_pair = self_iter.next();
-                m_other_pair = other_iter.next();
-            }
+        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val) {
+            intervals.insert(var.clone(), self_val.widen(other_val));
         }
         Self {
             var_to_val: intervals,
