@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn abstract_interpret3() {
         let mut interner = Interner::new();
-        let program = "fn basic(x, y, z) { return x + y * z; }";
+        let program = "fn basic(x, y, z) { if x > y { z = x + y; } else { y = z - x; } return z + y + x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());

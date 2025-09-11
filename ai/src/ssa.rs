@@ -279,68 +279,96 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
     }
 
     fn forward_transfer(&self, expr: &ExpressionAST) -> ClassId {
-        let root = self.graph.borrow_mut().makeset();
         use ExpressionAST::*;
         match expr {
-            NumberLiteral(lit) => self
-                .graph
-                .borrow_mut()
-                .insert(&Term::Constant(*lit, root)),
+            NumberLiteral(lit) => {
+                let root = self.graph.borrow_mut().makeset();
+                self.graph.borrow_mut().insert(&Term::Constant(*lit, root))
+            },
             Variable(var) => self.lookup(*var),
             Add(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
+                let root = self.graph.borrow_mut().makeset();
                 self.graph.borrow_mut().insert(&Term::Add(lhs, rhs, root))
             }
             Subtract(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::Subtract(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::Subtract(lhs, rhs, root))
             }
             Multiply(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::Multiply(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::Multiply(lhs, rhs, root))
             }
             Divide(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::Divide(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::Divide(lhs, rhs, root))
             }
             Modulo(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::Modulo(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::Modulo(lhs, rhs, root))
             }
             EqualsEquals(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::EqualsEquals(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::EqualsEquals(lhs, rhs, root))
             }
             NotEquals(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::NotEquals(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::NotEquals(lhs, rhs, root))
             }
             Less(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
+                let root = self.graph.borrow_mut().makeset();
                 self.graph.borrow_mut().insert(&Term::Less(lhs, rhs, root))
             }
             LessEquals(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::LessEquals(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::LessEquals(lhs, rhs, root))
             }
             Greater(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::Greater(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::Greater(lhs, rhs, root))
             }
             GreaterEquals(lhs, rhs) => {
                 let lhs = self.forward_transfer(lhs);
                 let rhs = self.forward_transfer(rhs);
-                self.graph.borrow_mut().insert(&Term::GreaterEquals(lhs, rhs, root))
+                let root = self.graph.borrow_mut().makeset();
+                self.graph
+                    .borrow_mut()
+                    .insert(&Term::GreaterEquals(lhs, rhs, root))
             }
             _ => todo!(),
         }
@@ -355,15 +383,44 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
     }
 
     fn branch(self) -> (Self, Self) {
-        todo!()
+        (self.clone(), self)
     }
 
-    fn finish(self, _returned: ClassId, _unique_id: usize) {
-
-    }
+    fn finish(self, _returned: ClassId, _unique_id: usize) {}
 
     fn join(&self, other: &Self) -> Self {
-        todo!()
+        let mut var_to_val = BTreeMap::new();
+        let mut self_iter = self.var_to_val.iter();
+        let mut other_iter = other.var_to_val.iter();
+        let mut m_self_pair = self_iter.next();
+        let mut m_other_pair = other_iter.next();
+        while let (Some(self_pair), Some(other_pair)) = (m_self_pair, m_other_pair) {
+            if self_pair.0 < other_pair.0 {
+                m_self_pair = self_iter.next();
+            } else if self_pair.0 > other_pair.0 {
+                m_other_pair = other_iter.next();
+            } else {
+                let root = if *self_pair.1 == *other_pair.1 {
+                    *self_pair.1
+                } else {
+                    let root = self.graph.borrow_mut().makeset();
+                    self.graph.borrow_mut().insert(&Term::Phi(
+                        BlockId(0),
+                        *self_pair.1,
+                        *other_pair.1,
+                        root,
+                    ))
+                };
+                var_to_val.insert(self_pair.0.clone(), root);
+                m_self_pair = self_iter.next();
+                m_other_pair = other_iter.next();
+            }
+        }
+        Self {
+            var_to_val,
+            num_params: self.num_params,
+            graph: self.graph,
+        }
     }
 
     fn widen(&self, other: &Self, unique_id: usize) -> Self {
