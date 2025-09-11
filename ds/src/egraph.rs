@@ -56,7 +56,7 @@ impl<const DET: usize, const DEP: usize> Table<DET, DEP> {
         if let Some(new_dep) = self.det_map.get(&det) {
             Some(*new_dep)
         } else {
-            let buffer_ref = unsafe { self.buffer_ptr.add(self.num_rows).as_mut_unchecked() };
+            let buffer_ref = unsafe { self.buffer_ptr.add(self.num_rows).as_mut().unwrap() };
             *buffer_ref = (det, dep);
             self.det_map.insert(&buffer_ref.0, &buffer_ref.1);
             self.num_rows += 1;
@@ -74,7 +74,7 @@ impl<const DET: usize, const DEP: usize> Table<DET, DEP> {
 
     fn delete_rows(&mut self, rows: &[usize]) {
         for row in rows {
-            let row = unsafe { self.buffer_ptr.add(*row).as_ref_unchecked() };
+            let row = unsafe { self.buffer_ptr.add(*row).as_ref().unwrap() };
             self.det_map.remove(&row.0);
         }
 
@@ -119,7 +119,7 @@ impl<'a, const DET: usize, const DEP: usize> Iterator for TableIterator<'a, DET,
                 }
             }
             let item = (
-                unsafe { self.table.buffer_ptr.add(self.row_idx).as_ref_unchecked() },
+                unsafe { self.table.buffer_ptr.add(self.row_idx).as_ref().unwrap() },
                 self.row_idx,
             );
             self.row_idx += 1;
