@@ -36,6 +36,12 @@ impl UnionFind {
         }
     }
 
+    pub fn set_all_not_equals(&mut self) {
+        for idx in 0..self.vec.len() {
+            self.vec[idx] = ClassId::from(idx as u32);
+        }
+    }
+
     pub fn makeset(&mut self) -> ClassId {
         let len = self.vec.len();
         let id = ClassId(len.try_into().unwrap());

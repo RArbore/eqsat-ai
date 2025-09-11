@@ -1,5 +1,6 @@
 use core::fmt::Debug;
 use core::marker::PhantomData;
+use core::mem::swap;
 use std::collections::HashMap;
 
 use bitvec::prelude::BitArray;
@@ -274,7 +275,8 @@ impl<T: ENode> EGraph<T> {
         self.uf.merge(a, b)
     }
 
-    pub fn rebuild(&mut self) {
+    pub fn rebuild(&mut self) -> bool {
+        let mut ever_changed = false;
         loop {
             let mut changed = false;
             let mut deleted_rows: Vec<usize> = vec![];
@@ -312,6 +314,67 @@ impl<T: ENode> EGraph<T> {
             }
 
             if !changed {
+                break ever_changed;
+            } else {
+                ever_changed = true;
+            }
+        }
+    }
+
+    pub fn corebuild(&mut self) {
+        let num_classes = self.uf.num_classes();
+        let mut last_uf = UnionFind::new_all_equals(num_classes);
+        let mut next_uf = UnionFind::new_all_not_equals(num_classes);
+
+        loop {
+            for (sig, table) in &mut self.tables {
+                let mut before_roots: Vec<ClassId> = vec![];
+                let mut canonicalized_rows: Vec<u32> = vec![];
+                let mut enode_to_eclasses: HashMap<&[u32], Vec<ClassId>> = HashMap::new();
+
+                for (det, dep, _) in table.rows() {
+                    let before_len = canonicalized_rows.len();
+                    canonicalized_rows.extend(det);
+                    canonicalized_rows.extend(dep);
+                    let row = &mut canonicalized_rows[before_len..];
+                    let (det, dep) = row.split_at_mut(sig.num_det_cols);
+                    before_roots.push(ClassId::from(dep[0]));
+                    canonicalize(&mut last_uf, det, dep, *sig);
+                }
+
+                let num_cols = sig.num_det_cols + sig.num_dep_cols;
+                for idx in 0..before_roots.len() {
+                    let det = &canonicalized_rows[idx * num_cols..idx * num_cols + sig.num_det_cols];
+                    enode_to_eclasses.entry(det).or_default().push(before_roots[idx]);
+                }
+
+                for equiv_classes in enode_to_eclasses.values() {
+                    let head = equiv_classes[0];
+                    for tail in &equiv_classes[1..] {
+                        next_uf.merge(head, *tail);
+                    }
+                }
+            }
+
+            if last_uf == next_uf {
+                break;
+            } else {
+                swap(&mut last_uf, &mut next_uf);
+                next_uf.set_all_not_equals();
+            }
+        }
+
+        for idx in 0..num_classes {
+            let id = ClassId::from(idx);
+            let canon = last_uf.find(id);
+            self.uf.merge(id, canon);
+        }
+    }
+
+    pub fn full_repair(&mut self) {
+        loop {
+            self.corebuild();
+            if !self.rebuild() {
                 break;
             }
         }

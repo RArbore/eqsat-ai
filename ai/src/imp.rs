@@ -139,19 +139,19 @@ mod tests {
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis);
         ai_func(ad, &program.funcs[0]);
-        graph.borrow_mut().rebuild();
+        graph.borrow_mut().full_repair();
     }
 
     #[test]
     fn abstract_interpret4() {
         let mut interner = Interner::new();
-        let program = "fn basic(x) { while x { x = x - 1; } return x + 1; }";
+        let program = "fn basic(x) { y = x; while x { x = x - 1; y = y - 1; } return y + x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis);
         ai_func(ad, &program.funcs[0]);
-        graph.borrow_mut().rebuild();
+        graph.borrow_mut().full_repair();
     }
 }
