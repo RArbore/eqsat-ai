@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::marker::PhantomData;
 use std::collections::HashMap;
 
@@ -8,10 +9,10 @@ use crate::uf::{ClassId, UnionFind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Signature {
-    class_id_mask: BitArray,
-    num_det_cols: usize,
-    num_dep_cols: usize,
-    symbol_id: usize,
+    pub class_id_mask: BitArray,
+    pub num_det_cols: usize,
+    pub num_dep_cols: usize,
+    pub symbol_id: usize,
 }
 
 pub trait ENode {
@@ -163,6 +164,32 @@ impl SizeErasedTable {
                 .map(|x| x as _),
         }
     }
+
+    fn rows(&self) -> Box<dyn Iterator<Item = (&[u32], &[u32], usize)> + '_> {
+        use SizeErasedTable::*;
+        match self {
+            OneOne(table) => Box::new(
+                table
+                    .rows()
+                    .map(|((det, dep), id)| (det as _, dep as _, id)),
+            ),
+            TwoOne(table) => Box::new(
+                table
+                    .rows()
+                    .map(|((det, dep), id)| (det as _, dep as _, id)),
+            ),
+            ThreeOne(table) => Box::new(
+                table
+                    .rows()
+                    .map(|((det, dep), id)| (det as _, dep as _, id)),
+            ),
+            FourOne(table) => Box::new(
+                table
+                    .rows()
+                    .map(|((det, dep), id)| (det as _, dep as _, id)),
+            ),
+        }
+    }
 }
 
 pub struct EGraph<T: ENode> {
@@ -218,6 +245,26 @@ impl<T: ENode> EGraph<T> {
         } else {
             old_root
         }
+    }
+
+    pub fn makeset(&mut self) -> ClassId {
+        self.uf.makeset()
+    }
+
+    pub fn merge(&mut self, a: ClassId, b: ClassId) -> ClassId {
+        self.uf.merge(a, b)
+    }
+}
+
+impl<T: ENode + Debug> Debug for EGraph<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "EGraph ({:?}):", self.uf)?;
+        for (sig, table) in &self.tables {
+            for row in table.rows() {
+                writeln!(f, "{:?}", T::decode_from_row(&row.0, &row.1, *sig))?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -308,7 +355,7 @@ mod tests {
                         ClassId::from(det[1]),
                         ClassId::from(dep[0]),
                     ),
-                    _ => panic!(),
+                    _ => todo!(),
                 }
             }
         }

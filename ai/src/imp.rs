@@ -83,14 +83,16 @@ where
 mod tests {
     use super::*;
 
-    use core::cell::RefCell;
+    use core::cell::{Cell, RefCell};
     use std::collections::BTreeMap;
 
+    use ds::egraph::EGraph;
     use imp::ast::Interner;
     use imp::grammar::ProgramParser;
 
     use crate::domain::{Lattice, LatticeDomain};
     use crate::interval::Interval;
+    use crate::ssa::ESSADomain;
 
     #[test]
     fn abstract_interpret1() {
@@ -125,5 +127,16 @@ mod tests {
                 high: 10
             }
         );
+    }
+
+    #[test]
+    fn abstract_interpret3() {
+        let mut interner = Interner::new();
+        let program = "fn basic(x, y, z) { return x + y * z; }";
+        let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let num_params = Cell::new(0);
+        let graph = RefCell::new(EGraph::new());
+        let ad = ESSADomain::new(&num_params, &graph);
+        ai_func(ad, &program.funcs[0]);
     }
 }

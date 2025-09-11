@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bitvec = "*"
+ds = { path = "../ds" }
 imp = { path = "../imp" }
