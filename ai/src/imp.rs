@@ -1,15 +1,24 @@
+use std::collections::HashMap;
+
 use imp::ast::Symbol;
 use imp::ast::{BlockAST, ExpressionAST, FunctionAST, StatementAST};
 
 use crate::domain::AbstractDomain;
 
-pub fn ai_func<AD>(mut ad: AD, function: &FunctionAST)
-where
+pub fn ai_func<AD>(
+    mut ad: AD,
+    function: &FunctionAST,
+    param_abstractions: &HashMap<Symbol, AD::Value>,
+) where
     AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST>,
 {
     let mut unique_id = 0;
     for param in &function.params {
-        ad.assign(*param, ad.bottom());
+        if let Some(abstraction) = param_abstractions.get(param) {
+            ad.assign(*param, abstraction.clone());
+        } else {
+            ad.assign(*param, ad.bottom());
+        }
     }
     ai_block(ad, &function.block, &mut unique_id);
 }
@@ -86,12 +95,13 @@ mod tests {
     use super::*;
 
     use core::cell::{Cell, RefCell};
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashSet};
 
     use ds::egraph::EGraph;
     use imp::ast::Interner;
     use imp::grammar::ProgramParser;
 
+    use crate::concrete::Concrete;
     use crate::domain::{Lattice, LatticeDomain};
     use crate::interval::Interval;
     use crate::ssa::ESSADomain;
@@ -104,7 +114,7 @@ mod tests {
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
         let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
-        ai_func(ad, &program.funcs[0]);
+        ai_func(ad, &program.funcs[0], &HashMap::new());
         let joined = finished
             .into_inner()
             .values()
@@ -121,7 +131,7 @@ mod tests {
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
         let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
-        ai_func(ad, &program.funcs[0]);
+        ai_func(ad, &program.funcs[0], &HashMap::new());
         assert_eq!(
             finished.into_inner().into_iter().next().unwrap().1,
             Interval {
@@ -141,7 +151,7 @@ mod tests {
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis);
-        ai_func(ad, &program.funcs[0]);
+        ai_func(ad, &program.funcs[0], &HashMap::new());
         graph.borrow_mut().full_repair();
     }
 
@@ -154,7 +164,43 @@ mod tests {
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis);
-        ai_func(ad, &program.funcs[0]);
+        ai_func(ad, &program.funcs[0], &HashMap::new());
         graph.borrow_mut().full_repair();
+    }
+
+    #[test]
+    fn abstract_interpret5() {
+        let mut interner = Interner::new();
+        let program =
+            "fn basic(x, y) { while x < 100 { x = x + 7; } if y { x = x + 17; } else { x = 120; } return x; }";
+        let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
+        let ad = LatticeDomain::<Symbol, Concrete>::new(&finished);
+        let mut param_abstractions = HashMap::new();
+        param_abstractions.insert(interner.get_or_intern("x"), Concrete::Value(5));
+        ai_func(ad, &program.funcs[0], &param_abstractions);
+        assert_eq!(
+            finished.into_inner().into_iter().next().unwrap().1,
+            Concrete::Value(120),
+        );
+    }
+
+    #[test]
+    fn abstract_interpret6() {
+        let mut interner = Interner::new();
+        let program = "fn basic(x) { if x { return 10 + 5; } else { return 7 + 2; } }";
+        let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
+        let ad = LatticeDomain::<Symbol, Concrete>::new(&finished);
+        ai_func(ad, &program.funcs[0], &HashMap::new());
+        let finished: HashSet<_> = finished
+            .into_inner()
+            .into_iter()
+            .map(|(_, val)| val)
+            .collect();
+        assert_eq!(
+            finished,
+            HashSet::from_iter(vec![Concrete::Value(15), Concrete::Value(9)].into_iter())
+        );
     }
 }

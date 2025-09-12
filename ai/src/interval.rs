@@ -72,7 +72,7 @@ impl ForwardTransfer for Interval {
                 high: *lit,
             },
             Variable(symbol) => ad.lookup(*symbol),
-            Call(_symbol, _expr) => todo!(),
+            Call(..) => todo!(),
             Add(lhs, rhs) => {
                 let lhs = ad.forward_transfer(lhs);
                 let rhs = ad.forward_transfer(rhs);

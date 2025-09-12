@@ -5,7 +5,7 @@ use crate::intersect_btree_maps;
 
 pub trait AbstractDomain: Clone + PartialEq {
     type Variable;
-    type Value;
+    type Value: Clone;
     type Expression;
 
     fn bottom(&self) -> Self::Value;
