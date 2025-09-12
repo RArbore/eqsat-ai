@@ -389,8 +389,8 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
         self.var_to_val.insert(var, val);
     }
 
-    fn branch(self) -> (Self, Self) {
-        (self.clone(), self)
+    fn branch(self, _cond: ClassId) -> (Option<Self>, Option<Self>) {
+        (Some(self.clone()), Some(self))
     }
 
     fn finish(self, _returned: ClassId, _unique_id: usize) {}

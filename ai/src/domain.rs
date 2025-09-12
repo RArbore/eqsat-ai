@@ -12,7 +12,7 @@ pub trait AbstractDomain: Clone + PartialEq {
     fn forward_transfer(&self, expr: &Self::Expression) -> Self::Value;
     fn lookup(&self, var: Self::Variable) -> Self::Value;
     fn assign(&mut self, var: Self::Variable, val: Self::Value);
-    fn branch(self) -> (Self, Self);
+    fn branch(self, cond: Self::Value) -> (Option<Self>, Option<Self>);
     fn finish(self, returned: Self::Value, unique_id: usize);
     fn join(&self, other: &Self) -> Self;
     fn widen(&self, other: &Self, unique_id: usize) -> Self;
@@ -76,8 +76,8 @@ impl<
         self.var_to_val.insert(var, val);
     }
 
-    fn branch(self) -> (Self, Self) {
-        (self.clone(), self)
+    fn branch(self, _cond: Value) -> (Option<Self>, Option<Self>) {
+        (Some(self.clone()), Some(self))
     }
 
     fn finish(self, returned: Value, unique_id: usize) {

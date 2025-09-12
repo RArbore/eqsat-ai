@@ -39,14 +39,16 @@ where
             Some(ad)
         }
         IfElse(expr, true_block, false_block) => {
-            let _cond = ad.forward_transfer(expr);
-            let (true_ad, false_ad) = ad.branch();
-            let true_ad = ai_block(true_ad, true_block, unique_id);
-            let false_ad = if let Some(false_block) = false_block {
-                ai_block(false_ad, false_block, unique_id)
-            } else {
-                Some(false_ad)
-            };
+            let cond = ad.forward_transfer(expr);
+            let (true_ad, false_ad) = ad.branch(cond);
+            let true_ad = true_ad.and_then(|true_ad| ai_block(true_ad, true_block, unique_id));
+            let false_ad = false_ad.and_then(|false_ad| {
+                if let Some(false_block) = false_block {
+                    ai_block(false_ad, false_block, unique_id)
+                } else {
+                    Some(false_ad)
+                }
+            });
 
             match (true_ad, false_ad) {
                 (Some(true_ad), Some(false_ad)) => Some(true_ad.join(&false_ad)),
@@ -58,14 +60,14 @@ where
             let unique_id_fix = *unique_id;
             let init = ad.clone();
             loop {
-                let _cond = ad.forward_transfer(expr);
-                let (cont, exit) = ad.clone().branch();
-                let Some(bottom) = ai_block(cont, block, unique_id) else {
-                    break Some(exit);
+                let cond = ad.forward_transfer(expr);
+                let (cont, exit) = ad.clone().branch(cond);
+                let Some(bottom) = cont.and_then(|cont| ai_block(cont, block, unique_id)) else {
+                    break exit;
                 };
                 let widened = init.widen(&bottom, unique_id_fix);
                 if ad == widened {
-                    break Some(exit);
+                    break exit;
                 } else {
                     ad = widened;
                 }
@@ -132,7 +134,8 @@ mod tests {
     #[test]
     fn abstract_interpret3() {
         let mut interner = Interner::new();
-        let program = "fn basic(x, y, z) { if x > y { z = x + y; } else { y = z - x; } return z + y + x; }";
+        let program =
+            "fn basic(x, y, z) { if x > y { z = x + y; } else { y = z - x; } return z + y + x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());
