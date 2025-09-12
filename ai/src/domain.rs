@@ -33,6 +33,12 @@ pub trait ForwardTransfer {
     fn forward_transfer<AD>(expr: &Self::Expression, ad: &AD) -> Self
     where
         AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
+    fn is_known_true<AD>(&self, ad: &AD) -> bool
+    where
+        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
+    fn is_known_false<AD>(&self, ad: &AD) -> bool
+    where
+        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,8 +82,14 @@ impl<
         self.var_to_val.insert(var, val);
     }
 
-    fn branch(self, _cond: Value) -> (Option<Self>, Option<Self>) {
-        (Some(self.clone()), Some(self))
+    fn branch(self, cond: Value) -> (Option<Self>, Option<Self>) {
+        if cond.is_known_true(&self) {
+            (Some(self), None)
+        } else if cond.is_known_false(&self) {
+            (None, Some(self))
+        } else {
+            (Some(self.clone()), Some(self))
+        }
     }
 
     fn finish(self, returned: Value, unique_id: usize) {
@@ -86,7 +98,8 @@ impl<
 
     fn join(&self, other: &Self) -> Self {
         let mut intervals = BTreeMap::new();
-        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val) {
+        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
+        {
             intervals.insert(var.clone(), self_val.join(other_val));
         }
         Self {
@@ -97,7 +110,8 @@ impl<
 
     fn widen(&self, other: &Self, _unique_id: usize) -> Self {
         let mut intervals = BTreeMap::new();
-        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val) {
+        for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
+        {
             intervals.insert(var.clone(), self_val.widen(other_val));
         }
         Self {

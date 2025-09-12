@@ -171,4 +171,18 @@ impl ForwardTransfer for Interval {
             }
         }
     }
+
+    fn is_known_true<AD>(&self, _ad: &AD) -> bool
+    where
+        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+    {
+        *self == Interval { low: 1, high: 1 }
+    }
+
+    fn is_known_false<AD>(&self, _ad: &AD) -> bool
+    where
+        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+    {
+        *self == Interval { low: 0, high: 0 }
+    }
 }

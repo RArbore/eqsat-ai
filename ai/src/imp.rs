@@ -100,7 +100,7 @@ mod tests {
     fn abstract_interpret1() {
         let mut interner = Interner::new();
         let program =
-            "fn basic(x, y) { if y { return (x < y) * 5; } else { return (y > x) - 3; } }";
+            "fn basic(x, y) { if 0 { return (x < y) * 5; } else { return (y > x) - 3; } }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
         let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
@@ -111,7 +111,7 @@ mod tests {
             .map(|x| *x)
             .reduce(|a, b| a.join(&b))
             .unwrap();
-        assert_eq!(joined, Interval { low: -3, high: 5 });
+        assert_eq!(joined, Interval { low: -3, high: -2 });
     }
 
     #[test]
