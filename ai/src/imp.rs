@@ -48,6 +48,7 @@ where
             Some(ad)
         }
         IfElse(expr, true_block, false_block) => {
+            let unique_id_fix = *unique_id;
             let cond = ad.forward_transfer(expr);
             let (true_ad, false_ad) = ad.branch(cond);
             let true_ad = true_ad.and_then(|true_ad| ai_block(true_ad, true_block, unique_id));
@@ -60,7 +61,7 @@ where
             });
 
             match (true_ad, false_ad) {
-                (Some(true_ad), Some(false_ad)) => Some(true_ad.join(&false_ad)),
+                (Some(true_ad), Some(false_ad)) => Some(true_ad.join(&false_ad, unique_id_fix)),
                 (Some(ad), None) | (None, Some(ad)) => Some(ad),
                 (None, None) => None,
             }
@@ -150,7 +151,7 @@ mod tests {
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
-        let ad = ESSADomain::new(&num_params, &graph, &static_phis);
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ());
         ai_func(ad, &program.funcs[0], &HashMap::new());
         graph.borrow_mut().full_repair();
     }
@@ -163,7 +164,7 @@ mod tests {
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
-        let ad = ESSADomain::new(&num_params, &graph, &static_phis);
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ());
         ai_func(ad, &program.funcs[0], &HashMap::new());
         graph.borrow_mut().full_repair();
     }

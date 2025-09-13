@@ -44,11 +44,11 @@ impl ForwardTransfer for Concrete {
     type Variable = Symbol;
     type Expression = ExpressionAST;
 
-    fn forward_transfer<AD>(expr: &Self::Expression, ad: &AD) -> Self
+    fn forward_transfer<AD>(expr: &Self::Expression, ad: &mut AD) -> Self
     where
         AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
     {
-        let eval = |lhs, rhs, func: &dyn Fn(i32, i32) -> Option<i32>| {
+        let mut eval = |lhs, rhs, func: &dyn Fn(i32, i32) -> Option<i32>| {
             let lhs = Self::forward_transfer(lhs, ad);
             let rhs = Self::forward_transfer(rhs, ad);
             match (lhs, rhs) {

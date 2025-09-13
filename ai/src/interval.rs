@@ -61,7 +61,7 @@ impl ForwardTransfer for Interval {
     type Variable = Symbol;
     type Expression = ExpressionAST;
 
-    fn forward_transfer<AD>(expr: &ExpressionAST, ad: &AD) -> Self
+    fn forward_transfer<AD>(expr: &ExpressionAST, ad: &mut AD) -> Self
     where
         AD: AbstractDomain<Value = Self, Variable = Symbol, Expression = ExpressionAST>,
     {

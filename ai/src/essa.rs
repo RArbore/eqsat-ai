@@ -245,157 +245,190 @@ impl ENode for Term {
 }
 
 #[derive(Clone)]
-pub struct ESSADomain<'a> {
+pub struct ESSADomain<'a, AD>
+where
+    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+{
     var_to_val: BTreeMap<Symbol, ClassId>,
     num_params: &'a Cell<u32>,
     graph: &'a RefCell<EGraph<Term>>,
     static_phis: &'a RefCell<BTreeMap<usize, BTreeMap<Symbol, (ClassId, ClassId)>>>,
+
+    ad: AD,
 }
 
-impl<'a> ESSADomain<'a> {
+impl<'a, AD> ESSADomain<'a, AD>
+where
+    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+{
     pub fn new(
         num_params: &'a Cell<u32>,
         graph: &'a RefCell<EGraph<Term>>,
         static_phis: &'a RefCell<BTreeMap<usize, BTreeMap<Symbol, (ClassId, ClassId)>>>,
+        ad: AD,
     ) -> Self {
         Self {
             var_to_val: BTreeMap::new(),
             num_params,
             graph,
             static_phis,
+            ad,
         }
     }
 }
 
-impl<'a> PartialEq for ESSADomain<'a> {
+impl<'a, AD> PartialEq for ESSADomain<'a, AD>
+where
+    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+{
     fn eq(&self, other: &Self) -> bool {
-        self.var_to_val == other.var_to_val
+        self.var_to_val == other.var_to_val && self.ad == other.ad
     }
 }
 
-impl<'a> AbstractDomain for ESSADomain<'a> {
+impl<'a, AD> AbstractDomain for ESSADomain<'a, AD>
+where
+    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+{
     type Variable = Symbol;
-    type Value = ClassId;
+    type Value = (ClassId, AD::Value);
     type Expression = ExpressionAST;
 
-    fn bottom(&self) -> ClassId {
+    fn bottom(&self) -> (ClassId, AD::Value) {
         let idx = self.num_params.get() as u32;
         self.num_params.set(idx + 1);
         let root = self.graph.borrow_mut().makeset();
-        self.graph.borrow_mut().insert(&Term::Parameter(idx, root))
+        (
+            self.graph.borrow_mut().insert(&Term::Parameter(idx, root)),
+            self.ad.bottom(),
+        )
     }
 
-    fn forward_transfer(&self, expr: &ExpressionAST) -> ClassId {
+    fn forward_transfer(&mut self, expr: &ExpressionAST) -> (ClassId, AD::Value) {
+        let handle_binary_op =
+            |s: &mut Self, mk_term: &dyn Fn(ClassId, ClassId, ClassId) -> Term, lhs, rhs| {
+                let lhs = s.forward_transfer(lhs);
+                let rhs = s.forward_transfer(rhs);
+                let root = s.graph.borrow_mut().makeset();
+                let term = mk_term(lhs.0, rhs.0, root);
+                (
+                    s.graph.borrow_mut().insert(&term),
+                    s.ad.forward_transfer(&term),
+                )
+            };
         use ExpressionAST::*;
-        match expr {
+        let (class_id, ad_value) = match expr {
             NumberLiteral(lit) => {
                 let root = self.graph.borrow_mut().makeset();
-                self.graph.borrow_mut().insert(&Term::Constant(*lit, root))
+                let term = Term::Constant(*lit, root);
+                (
+                    self.graph.borrow_mut().insert(&term),
+                    self.ad.forward_transfer(&term),
+                )
             }
             Variable(var) => self.lookup(*var),
             Call(_, _) => todo!(),
             Add(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph.borrow_mut().insert(&Term::Add(lhs, rhs, root))
+                handle_binary_op(self, &|lhs, rhs, root| Term::Add(lhs, rhs, root), lhs, rhs)
             }
-            Subtract(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::Subtract(lhs, rhs, root))
-            }
-            Multiply(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::Multiply(lhs, rhs, root))
-            }
-            Divide(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::Divide(lhs, rhs, root))
-            }
-            Modulo(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::Modulo(lhs, rhs, root))
-            }
-            EqualsEquals(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::EqualsEquals(lhs, rhs, root))
-            }
-            NotEquals(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::NotEquals(lhs, rhs, root))
-            }
+            Subtract(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::Subtract(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            Multiply(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::Multiply(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            Divide(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::Divide(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            Modulo(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::Modulo(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            EqualsEquals(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::EqualsEquals(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            NotEquals(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::NotEquals(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
             Less(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph.borrow_mut().insert(&Term::Less(lhs, rhs, root))
+                handle_binary_op(self, &|lhs, rhs, root| Term::Less(lhs, rhs, root), lhs, rhs)
             }
-            LessEquals(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::LessEquals(lhs, rhs, root))
+            LessEquals(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::LessEquals(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            Greater(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::Greater(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+            GreaterEquals(lhs, rhs) => handle_binary_op(
+                self,
+                &|lhs, rhs, root| Term::GreaterEquals(lhs, rhs, root),
+                lhs,
+                rhs,
+            ),
+        };
+        self.ad.assign(class_id, ad_value.clone());
+        (class_id, ad_value)
+    }
+
+    fn lookup(&self, var: Symbol) -> (ClassId, AD::Value) {
+        let class_id = self.var_to_val[&var];
+        (class_id, self.ad.lookup(class_id))
+    }
+
+    fn assign(&mut self, var: Symbol, val: (ClassId, AD::Value)) {
+        self.var_to_val.insert(var, val.0);
+        self.ad.assign(val.0, val.1);
+    }
+
+    fn branch(self, cond: (ClassId, AD::Value)) -> (Option<Self>, Option<Self>) {
+        let (ad_true, ad_false) = self.ad.branch(cond.1);
+        let self_clone = |ad| {
+            Self {
+                var_to_val: self.var_to_val.clone(),
+                num_params: self.num_params,
+                graph: self.graph,
+                static_phis: self.static_phis,
+                ad
             }
-            Greater(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::Greater(lhs, rhs, root))
-            }
-            GreaterEquals(lhs, rhs) => {
-                let lhs = self.forward_transfer(lhs);
-                let rhs = self.forward_transfer(rhs);
-                let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::GreaterEquals(lhs, rhs, root))
-            }
+        };
+        match (ad_true, ad_false) {
+            (Some(ad_true), Some(ad_false)) => (Some(self_clone(ad_true)), Some(self_clone(ad_false))),
+            (Some(ad_true), None) => (Some(self_clone(ad_true)), None),
+            (None, Some(ad_false)) => (None, Some(self_clone(ad_false))),
+            (None, None) => (None, None)
         }
     }
 
-    fn lookup(&self, var: Symbol) -> ClassId {
-        self.var_to_val[&var]
+    fn finish(self, returned: (ClassId, AD::Value), unique_id: usize) {
+        self.ad.finish(returned.1, unique_id);
     }
 
-    fn assign(&mut self, var: Symbol, val: ClassId) {
-        self.var_to_val.insert(var, val);
-    }
-
-    fn branch(self, _cond: ClassId) -> (Option<Self>, Option<Self>) {
-        (Some(self.clone()), Some(self))
-    }
-
-    fn finish(self, _returned: ClassId, _unique_id: usize) {}
-
-    fn join(&self, other: &Self) -> Self {
+    fn join(&self, other: &Self, unique_id: usize) -> Self {
+        let mut self_ad = self.ad.clone();
+        let mut other_ad = other.ad.clone();
         let mut var_to_val = BTreeMap::new();
         for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
         {
@@ -403,9 +436,14 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
                 *self_val
             } else {
                 let root = self.graph.borrow_mut().makeset();
-                self.graph
-                    .borrow_mut()
-                    .insert(&Term::Phi(BlockId(0), *self_val, *other_val, root))
+                self_ad.assign(root, self_ad.lookup(*self_val));
+                other_ad.assign(root, other_ad.lookup(*other_val));
+                self.graph.borrow_mut().insert(&Term::Phi(
+                    BlockId(unique_id as u32),
+                    *self_val,
+                    *other_val,
+                    root,
+                ))
             };
             var_to_val.insert(*var, root);
         }
@@ -414,10 +452,13 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
             num_params: self.num_params,
             graph: self.graph,
             static_phis: self.static_phis,
+            ad: self_ad.join(&other_ad, unique_id)
         }
     }
 
     fn widen(&self, other: &Self, unique_id: usize) -> Self {
+        let mut self_ad = self.ad.clone();
+        let mut other_ad = other.ad.clone();
         let mut static_phis_borrow = self.static_phis.borrow_mut();
         let static_phis = static_phis_borrow.entry(unique_id).or_default();
         let mut var_to_val = BTreeMap::new();
@@ -425,9 +466,16 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
 
         for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
         {
-            let make_phi = || {
+            let mut make_phi = || {
                 let phi = self.graph.borrow_mut().makeset();
-                self.graph.borrow_mut().insert(&Term::Phi(BlockId(0), *self_val, *other_val, phi))
+                self_ad.assign(phi, self_ad.lookup(*self_val));
+                other_ad.assign(phi, other_ad.lookup(*other_val));
+                self.graph.borrow_mut().insert(&Term::Phi(
+                    BlockId(unique_id as u32),
+                    *self_val,
+                    *other_val,
+                    phi,
+                ))
             };
             if *self_val == *other_val {
                 var_to_val.insert(*var, *self_val);
@@ -456,6 +504,43 @@ impl<'a> AbstractDomain for ESSADomain<'a> {
             num_params: self.num_params,
             graph: self.graph,
             static_phis: self.static_phis,
+            ad: self_ad.widen(&other_ad, unique_id)
         }
+    }
+}
+
+impl AbstractDomain for () {
+    type Variable = ClassId;
+    type Value = ();
+    type Expression = Term;
+
+    fn bottom(&self) -> Self::Value {
+        ()
+    }
+
+    fn forward_transfer(&mut self, _expr: &Self::Expression) -> Self::Value {
+        ()
+    }
+
+    fn lookup(&self, _var: Self::Variable) -> Self::Value {
+        ()
+    }
+
+    fn assign(&mut self, _var: Self::Variable, _val: Self::Value) {}
+
+    fn branch(self, _cond: Self::Value) -> (Option<Self>, Option<Self>) {
+        (Some(()), Some(()))
+    }
+
+    fn finish(self, _returned: Self::Value, _unique_id: usize) {
+        ()
+    }
+
+    fn join(&self, _other: &Self, _unique_id: usize) -> Self {
+        ()
+    }
+
+    fn widen(&self, _other: &Self, _unique_id: usize) -> Self {
+        ()
     }
 }

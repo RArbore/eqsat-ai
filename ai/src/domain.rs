@@ -9,12 +9,12 @@ pub trait AbstractDomain: Clone + PartialEq {
     type Expression;
 
     fn bottom(&self) -> Self::Value;
-    fn forward_transfer(&self, expr: &Self::Expression) -> Self::Value;
+    fn forward_transfer(&mut self, expr: &Self::Expression) -> Self::Value;
     fn lookup(&self, var: Self::Variable) -> Self::Value;
     fn assign(&mut self, var: Self::Variable, val: Self::Value);
     fn branch(self, cond: Self::Value) -> (Option<Self>, Option<Self>);
     fn finish(self, returned: Self::Value, unique_id: usize);
-    fn join(&self, other: &Self) -> Self;
+    fn join(&self, other: &Self, unique_id: usize) -> Self;
     fn widen(&self, other: &Self, unique_id: usize) -> Self;
 }
 
@@ -30,7 +30,7 @@ pub trait ForwardTransfer {
     type Variable;
     type Expression;
 
-    fn forward_transfer<AD>(expr: &Self::Expression, ad: &AD) -> Self
+    fn forward_transfer<AD>(expr: &Self::Expression, ad: &mut AD) -> Self
     where
         AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
     fn is_known_true<AD>(&self, ad: &AD) -> bool
@@ -70,7 +70,7 @@ impl<
         Value::bottom()
     }
 
-    fn forward_transfer(&self, expr: &Expression) -> Value {
+    fn forward_transfer(&mut self, expr: &Expression) -> Value {
         Value::forward_transfer(expr, self)
     }
 
@@ -96,7 +96,7 @@ impl<
         self.finished.borrow_mut().insert(unique_id, returned);
     }
 
-    fn join(&self, other: &Self) -> Self {
+    fn join(&self, other: &Self, _unique_id: usize) -> Self {
         let mut intervals = BTreeMap::new();
         for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
         {
