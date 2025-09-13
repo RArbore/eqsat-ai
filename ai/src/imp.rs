@@ -103,8 +103,8 @@ mod tests {
 
     use crate::concrete::Concrete;
     use crate::domain::{Lattice, LatticeDomain};
+    use crate::essa::ESSADomain;
     use crate::interval::Interval;
-    use crate::ssa::ESSADomain;
 
     #[test]
     fn abstract_interpret1() {
@@ -171,8 +171,7 @@ mod tests {
     #[test]
     fn abstract_interpret5() {
         let mut interner = Interner::new();
-        let program =
-            "fn basic(x, y) { while x < 100 { x = x + 7; } if y { x = x + 17; } else { x = 120; } return x; }";
+        let program = "fn basic(x, y) { while x < 100 { x = x + 7; } if y { x = x + 17; } else { x = 120; } return x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
         let ad = LatticeDomain::<Symbol, Concrete>::new(&finished);
