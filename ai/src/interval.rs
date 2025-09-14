@@ -57,10 +57,7 @@ impl Lattice for Interval {
     }
 }
 
-impl ForwardTransfer for Interval {
-    type Variable = Symbol;
-    type Expression = ExpressionAST;
-
+impl ForwardTransfer<Symbol, ExpressionAST> for Interval {
     fn forward_transfer<AD>(expr: &ExpressionAST, ad: &mut AD) -> Self
     where
         AD: AbstractDomain<Value = Self, Variable = Symbol, Expression = ExpressionAST>,
@@ -174,14 +171,14 @@ impl ForwardTransfer for Interval {
 
     fn is_known_true<AD>(&self, _ad: &AD) -> bool
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+        AD: AbstractDomain<Variable = Symbol, Value = Self, Expression = ExpressionAST>,
     {
         *self == Interval { low: 1, high: 1 }
     }
 
     fn is_known_false<AD>(&self, _ad: &AD) -> bool
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+        AD: AbstractDomain<Variable = Symbol, Value = Self, Expression = ExpressionAST>,
     {
         *self == Interval { low: 0, high: 0 }
     }

@@ -114,7 +114,7 @@ mod tests {
             "fn basic(x, y) { if 0 { return (x < y) * 5; } else { return (y > x) - 3; } }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
+        let ad = LatticeDomain::<Symbol, Interval, ExpressionAST>::new(&finished);
         ai_func(ad, &program.funcs[0], &HashMap::new());
         let joined = finished
             .into_inner()
@@ -131,7 +131,7 @@ mod tests {
         let program = "fn basic() { x = 10; while x { x = x / 2; } return x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Interval>::new(&finished);
+        let ad = LatticeDomain::<Symbol, Interval, ExpressionAST>::new(&finished);
         ai_func(ad, &program.funcs[0], &HashMap::new());
         assert_eq!(
             finished.into_inner().into_iter().next().unwrap().1,
@@ -175,7 +175,7 @@ mod tests {
         let program = "fn basic(x, y) { while x < 100 { x = x + 7; } if y { x = x + 17; } else { x = 120; } return x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Concrete>::new(&finished);
+        let ad = LatticeDomain::<Symbol, Concrete, ExpressionAST>::new(&finished);
         let mut param_abstractions = HashMap::new();
         param_abstractions.insert(interner.get_or_intern("x"), Concrete::Value(5));
         ai_func(ad, &program.funcs[0], &param_abstractions);
@@ -191,7 +191,7 @@ mod tests {
         let program = "fn basic(x) { if x { return 10 + 5; } else { return 7 + 2; } }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Concrete>::new(&finished);
+        let ad = LatticeDomain::<Symbol, Concrete, ExpressionAST>::new(&finished);
         ai_func(ad, &program.funcs[0], &HashMap::new());
         let finished: HashSet<_> = finished
             .into_inner()

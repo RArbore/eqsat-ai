@@ -1,4 +1,5 @@
 use core::cell::RefCell;
+use core::marker::PhantomData;
 use std::collections::BTreeMap;
 
 use crate::intersect_btree_maps;
@@ -26,41 +27,63 @@ pub trait Lattice {
     fn widen(&self, other: &Self) -> Self;
 }
 
-pub trait ForwardTransfer {
-    type Variable;
-    type Expression;
-
-    fn forward_transfer<AD>(expr: &Self::Expression, ad: &mut AD) -> Self
+pub trait ForwardTransfer<Variable, Expression> {
+    fn forward_transfer<AD>(expr: &Expression, ad: &mut AD) -> Self
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
+        AD: AbstractDomain<Variable = Variable, Value = Self, Expression = Expression>;
     fn is_known_true<AD>(&self, ad: &AD) -> bool
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
+        AD: AbstractDomain<Variable = Variable, Value = Self, Expression = Expression>;
     fn is_known_false<AD>(&self, ad: &AD) -> bool
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>;
+        AD: AbstractDomain<Variable = Variable, Value = Self, Expression = Expression>;
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct LatticeDomain<'a, Variable, Value> {
+#[derive(Debug)]
+pub struct LatticeDomain<'a, Variable, Value, Expression> {
     var_to_val: BTreeMap<Variable, Value>,
     finished: &'a RefCell<BTreeMap<usize, Value>>,
+    _phantom: PhantomData<Expression>,
 }
 
-impl<'a, Variable, Value> LatticeDomain<'a, Variable, Value> {
+impl<'a, Variable, Value, Expression> LatticeDomain<'a, Variable, Value, Expression> {
     pub fn new(finished: &'a RefCell<BTreeMap<usize, Value>>) -> Self {
         Self {
             var_to_val: BTreeMap::new(),
             finished,
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<
+impl<'a, Variable, Value, Expression> Clone for LatticeDomain<'a, Variable, Value, Expression>
+where
+    Variable: Clone,
+    Value: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            var_to_val: self.var_to_val.clone(),
+            finished: self.finished,
+            _phantom: self._phantom.clone(),
+        }
+    }
+}
+
+impl<'a, Variable, Value, Expression> PartialEq for LatticeDomain<'a, Variable, Value, Expression>
+where
+    Variable: PartialEq,
+    Value: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.var_to_val == other.var_to_val
+    }
+}
+
+impl<Variable, Expression, Value> AbstractDomain for LatticeDomain<'_, Variable, Value, Expression>
+where
     Variable: Clone + PartialEq + Ord,
-    Value: Clone + PartialEq + Lattice + ForwardTransfer<Variable = Variable, Expression = Expression>,
-    Expression,
-> AbstractDomain for LatticeDomain<'_, Variable, Value>
+    Value: Clone + PartialEq + Lattice + ForwardTransfer<Variable, Expression>,
 {
     type Variable = Variable;
     type Value = Value;
@@ -105,6 +128,7 @@ impl<
         Self {
             var_to_val: intervals,
             finished: self.finished,
+            _phantom: PhantomData,
         }
     }
 
@@ -117,6 +141,7 @@ impl<
         Self {
             var_to_val: intervals,
             finished: self.finished,
+            _phantom: PhantomData,
         }
     }
 }

@@ -40,13 +40,10 @@ impl Lattice for Concrete {
     }
 }
 
-impl ForwardTransfer for Concrete {
-    type Variable = Symbol;
-    type Expression = ExpressionAST;
-
-    fn forward_transfer<AD>(expr: &Self::Expression, ad: &mut AD) -> Self
+impl ForwardTransfer<Symbol, ExpressionAST> for Concrete {
+    fn forward_transfer<AD>(expr: &ExpressionAST, ad: &mut AD) -> Self
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+        AD: AbstractDomain<Variable = Symbol, Value = Self, Expression = ExpressionAST>,
     {
         let mut eval = |lhs, rhs, func: &dyn Fn(i32, i32) -> Option<i32>| {
             let lhs = Self::forward_transfer(lhs, ad);
@@ -83,7 +80,7 @@ impl ForwardTransfer for Concrete {
 
     fn is_known_true<AD>(&self, _ad: &AD) -> bool
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+        AD: AbstractDomain<Variable = Symbol, Value = Self, Expression = ExpressionAST>,
     {
         match *self {
             Concrete::Top => true,
@@ -94,7 +91,7 @@ impl ForwardTransfer for Concrete {
 
     fn is_known_false<AD>(&self, _ad: &AD) -> bool
     where
-        AD: AbstractDomain<Variable = Self::Variable, Value = Self, Expression = Self::Expression>,
+        AD: AbstractDomain<Variable = Symbol, Value = Self, Expression = ExpressionAST>,
     {
         match *self {
             Concrete::Top => true,
