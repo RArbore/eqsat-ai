@@ -405,21 +405,14 @@ where
 
     fn branch(self, cond: (ClassId, AD::Value)) -> (Option<Self>, Option<Self>) {
         let (ad_true, ad_false) = self.ad.branch(cond.1);
-        let self_clone = |ad| {
-            Self {
-                var_to_val: self.var_to_val.clone(),
-                num_params: self.num_params,
-                graph: self.graph,
-                static_phis: self.static_phis,
-                ad
-            }
+        let self_clone = |ad| Self {
+            var_to_val: self.var_to_val.clone(),
+            num_params: self.num_params,
+            graph: self.graph,
+            static_phis: self.static_phis,
+            ad,
         };
-        match (ad_true, ad_false) {
-            (Some(ad_true), Some(ad_false)) => (Some(self_clone(ad_true)), Some(self_clone(ad_false))),
-            (Some(ad_true), None) => (Some(self_clone(ad_true)), None),
-            (None, Some(ad_false)) => (None, Some(self_clone(ad_false))),
-            (None, None) => (None, None)
-        }
+        (ad_true.map(self_clone), ad_false.map(self_clone))
     }
 
     fn finish(self, returned: (ClassId, AD::Value), unique_id: usize) {
@@ -452,7 +445,7 @@ where
             num_params: self.num_params,
             graph: self.graph,
             static_phis: self.static_phis,
-            ad: self_ad.join(&other_ad, unique_id)
+            ad: self_ad.join(&other_ad, unique_id),
         }
     }
 
@@ -492,8 +485,10 @@ where
             }
         }
 
+        let mut merged_ad = self_ad.widen(&other_ad, unique_id);
         if !new_static_phi {
             for (_, (static_phi, last_expr)) in static_phis {
+                merged_ad.assign(*static_phi, merged_ad.lookup(*last_expr));
                 self.graph.borrow_mut().merge(*static_phi, *last_expr);
             }
             static_phis_borrow.remove(&unique_id);
@@ -504,7 +499,7 @@ where
             num_params: self.num_params,
             graph: self.graph,
             static_phis: self.static_phis,
-            ad: self_ad.widen(&other_ad, unique_id)
+            ad: merged_ad,
         }
     }
 }
