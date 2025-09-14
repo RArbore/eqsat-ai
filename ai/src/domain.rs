@@ -106,10 +106,10 @@ where
     }
 
     fn branch(self, cond: Value) -> (Option<Self>, Option<Self>) {
-        if cond.is_known_true(&self) {
-            (Some(self), None)
-        } else if cond.is_known_false(&self) {
+        if cond.is_known_false(&self) {
             (None, Some(self))
+        } else if cond.is_known_true(&self) {
+            (Some(self), None)
         } else {
             (Some(self.clone()), Some(self))
         }

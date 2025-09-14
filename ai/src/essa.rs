@@ -244,7 +244,7 @@ impl ENode for Term {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ESSADomain<'a, AD>
 where
     AD: AbstractDomain<Variable = ClassId, Expression = Term>,
@@ -461,14 +461,15 @@ where
         {
             let mut make_phi = || {
                 let phi = self.graph.borrow_mut().makeset();
-                self_ad.assign(phi, self_ad.lookup(*self_val));
-                other_ad.assign(phi, other_ad.lookup(*other_val));
-                self.graph.borrow_mut().insert(&Term::Phi(
+                let phi = self.graph.borrow_mut().insert(&Term::Phi(
                     BlockId(unique_id as u32),
                     *self_val,
                     *other_val,
                     phi,
-                ))
+                ));
+                self_ad.assign(phi, self_ad.lookup(*self_val));
+                other_ad.assign(phi, other_ad.lookup(*other_val));
+                phi
             };
             if *self_val == *other_val {
                 var_to_val.insert(*var, *self_val);
@@ -486,9 +487,11 @@ where
         }
 
         let mut merged_ad = self_ad.widen(&other_ad, unique_id);
+        for (_, (static_phi, last_expr)) in static_phis.iter() {
+            merged_ad.assign(*static_phi, merged_ad.lookup(*last_expr));
+        }
         if !new_static_phi {
             for (_, (static_phi, last_expr)) in static_phis {
-                merged_ad.assign(*static_phi, merged_ad.lookup(*last_expr));
                 self.graph.borrow_mut().merge(*static_phi, *last_expr);
             }
             static_phis_borrow.remove(&unique_id);

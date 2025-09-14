@@ -99,12 +99,13 @@ mod tests {
     use std::collections::{BTreeMap, HashSet};
 
     use ds::egraph::EGraph;
+    use ds::uf::ClassId;
     use imp::ast::Interner;
     use imp::grammar::ProgramParser;
 
     use crate::concrete::Concrete;
     use crate::domain::{Lattice, LatticeDomain};
-    use crate::essa::ESSADomain;
+    use crate::essa::{ESSADomain, Term};
     use crate::interval::Interval;
 
     #[test]
@@ -175,9 +176,15 @@ mod tests {
         let program = "fn basic(x, y) { while x < 100 { x = x + 7; } if y { x = x + 17; } else { x = 120; } return x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Concrete, ExpressionAST>::new(&finished);
+        let ad = LatticeDomain::<ClassId, Concrete, Term>::new(&finished);
+        let num_params = Cell::new(1);
+        let graph = RefCell::new(EGraph::new());
+        let static_phis = RefCell::new(BTreeMap::new());
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
         let mut param_abstractions = HashMap::new();
-        param_abstractions.insert(interner.get_or_intern("x"), Concrete::Value(5));
+        let param = graph.borrow_mut().makeset();
+        graph.borrow_mut().insert(&Term::Parameter(0, param));
+        param_abstractions.insert(interner.get_or_intern("x"), (param, Concrete::Value(5)));
         ai_func(ad, &program.funcs[0], &param_abstractions);
         assert_eq!(
             finished.into_inner().into_iter().next().unwrap().1,
@@ -191,7 +198,11 @@ mod tests {
         let program = "fn basic(x) { if x { return 10 + 5; } else { return 7 + 2; } }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Concrete, ExpressionAST>::new(&finished);
+        let ad = LatticeDomain::<ClassId, Concrete, Term>::new(&finished);
+        let num_params = Cell::new(0);
+        let graph = RefCell::new(EGraph::new());
+        let static_phis = RefCell::new(BTreeMap::new());
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
         ai_func(ad, &program.funcs[0], &HashMap::new());
         let finished: HashSet<_> = finished
             .into_inner()

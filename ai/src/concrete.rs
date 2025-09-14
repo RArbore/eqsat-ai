@@ -1,7 +1,10 @@
 use imp::ast::ExpressionAST;
 use imp::ast::Symbol;
 
+use ds::uf::ClassId;
+
 use crate::domain::{AbstractDomain, ForwardTransfer, Lattice};
+use crate::essa::Term;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Concrete {
@@ -93,6 +96,62 @@ impl ForwardTransfer<Symbol, ExpressionAST> for Concrete {
     where
         AD: AbstractDomain<Variable = Symbol, Value = Self, Expression = ExpressionAST>,
     {
+        match *self {
+            Concrete::Top => true,
+            Concrete::Value(val) => val == 0,
+            Concrete::Bottom => false,
+        }
+    }
+}
+
+impl ForwardTransfer<ClassId, Term> for Concrete {
+    fn forward_transfer<AD>(term: &Term, ad: &mut AD) -> Self
+    where
+        AD: AbstractDomain<Variable = ClassId, Value = Self, Expression = Term>
+    {
+        let eval = |lhs, rhs, func: &dyn Fn(i32, i32) -> Option<i32>| {
+            match (ad.lookup(lhs), ad.lookup(rhs)) {
+                (Concrete::Top, _) | (_, Concrete::Top) => Concrete::Top,
+                (Concrete::Bottom, _) | (_, Concrete::Bottom) => Concrete::Top,
+                (Concrete::Value(lhs), Concrete::Value(rhs)) => {
+                    if let Some(value) = func(lhs, rhs) {
+                        Concrete::Value(value)
+                    } else {
+                        Concrete::Top
+                    }
+                },
+            }
+        };
+        match term {
+            Term::Constant(cons, _) => Concrete::Value(*cons),
+            Term::Parameter(_, root) | Term::Phi(_, _, _, root) => ad.lookup(*root),
+            Term::Add(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some(a.wrapping_add(b))),
+            Term::Subtract(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some(a.wrapping_sub(b))),
+            Term::Multiply(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some(a.wrapping_mul(b))),
+            Term::Divide(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| a.checked_div(b)),
+            Term::Modulo(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| a.checked_rem(b)),
+            Term::EqualsEquals(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some((a == b) as i32)),
+            Term::NotEquals(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some((a != b) as i32)),
+            Term::Less(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some((a < b) as i32)),
+            Term::LessEquals(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some((a <= b) as i32)),
+            Term::Greater(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some((a > b) as i32)),
+            Term::GreaterEquals(lhs, rhs, _) => eval(*lhs, *rhs, &|a, b| Some((a >= b) as i32)),
+        }
+    }
+
+    fn is_known_true<AD>(&self, _ad: &AD) -> bool
+    where
+        AD: AbstractDomain<Variable = ClassId, Value = Self, Expression = Term> {
+        match *self {
+            Concrete::Top => true,
+            Concrete::Value(val) => val != 0,
+            Concrete::Bottom => false,
+        }
+    }
+
+    fn is_known_false<AD>(&self, _ad: &AD) -> bool
+    where
+        AD: AbstractDomain<Variable = ClassId, Value = Self, Expression = Term> {
         match *self {
             Concrete::Top => true,
             Concrete::Value(val) => val == 0,
