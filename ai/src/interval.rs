@@ -281,14 +281,14 @@ impl ForwardTransfer<ClassId, Term> for Interval {
         }
     }
 
-    fn is_known_true<AD>(&self, ad: &AD) -> bool
+    fn is_known_true<AD>(&self, _ad: &AD) -> bool
     where
         AD: AbstractDomain<Variable = ClassId, Value = Self, Expression = Term>,
     {
         self.low >= 1 || self.high <= -1
     }
 
-    fn is_known_false<AD>(&self, ad: &AD) -> bool
+    fn is_known_false<AD>(&self, _ad: &AD) -> bool
     where
         AD: AbstractDomain<Variable = ClassId, Value = Self, Expression = Term>,
     {

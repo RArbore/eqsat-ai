@@ -487,7 +487,8 @@ where
         }
 
         let merged_ad = self_ad.widen(&other_ad, unique_id);
-        if !new_static_phi {
+        // TODO: determine if this check of the sub-domain is really necessary
+        if !new_static_phi && merged_ad == other_ad {
             for (_, (static_phi, last_expr)) in static_phis {
                 self.graph.borrow_mut().merge(*static_phi, *last_expr);
             }
