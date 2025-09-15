@@ -271,6 +271,10 @@ impl<T: ENode> EGraph<T> {
         self.uf.makeset()
     }
 
+    pub fn find(&mut self, x: ClassId) -> ClassId {
+        self.uf.find(x)
+    }
+
     pub fn merge(&mut self, a: ClassId, b: ClassId) -> ClassId {
         self.uf.merge(a, b)
     }
@@ -383,13 +387,13 @@ impl<T: ENode> EGraph<T> {
 
 impl<T: ENode + Debug> Debug for EGraph<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "EGraph ({:?}):", self.uf)?;
+        write!(f, "EGraph ({:?}) {{", self.uf)?;
         for (sig, table) in &self.tables {
             for row in table.rows() {
-                writeln!(f, "{:?}", T::decode_from_row(&row.0, &row.1, *sig))?;
+                write!(f, "{:?}, ", T::decode_from_row(&row.0, &row.1, *sig))?;
             }
         }
-        Ok(())
+        write!(f, "}}")
     }
 }
 

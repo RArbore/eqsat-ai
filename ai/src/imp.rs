@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::collections::HashMap;
 
 use imp::ast::Symbol;
@@ -10,7 +11,7 @@ pub fn ai_func<AD>(
     function: &FunctionAST,
     param_abstractions: &HashMap<Symbol, AD::Value>,
 ) where
-    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST>,
+    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST> + Debug,
 {
     let mut unique_id = 0;
     for param in &function.params {
@@ -25,7 +26,7 @@ pub fn ai_func<AD>(
 
 pub fn ai_block<AD>(mut ad: AD, block: &BlockAST, unique_id: &mut usize) -> Option<AD>
 where
-    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST>,
+    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST> + Debug,
 {
     for stmt in &block.stmts {
         ad = ai_stmt(ad, stmt, unique_id)?;
@@ -35,7 +36,7 @@ where
 
 pub fn ai_stmt<AD>(mut ad: AD, stmt: &StatementAST, unique_id: &mut usize) -> Option<AD>
 where
-    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST>,
+    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST> + Debug,
 {
     *unique_id = *unique_id + 1;
 
@@ -70,8 +71,9 @@ where
             let unique_id_fix = *unique_id;
             let init = ad.clone();
             loop {
-                let cond = ad.forward_transfer(expr);
-                let (cont, exit) = ad.clone().branch(cond);
+                let mut to_branch = ad.clone();
+                let cond = to_branch.forward_transfer(expr);
+                let (cont, exit) = to_branch.branch(cond);
                 let Some(bottom) = cont.and_then(|cont| ai_block(cont, block, unique_id)) else {
                     break exit;
                 };
@@ -115,7 +117,11 @@ mod tests {
             "fn basic(x, y) { if 0 { return (x < y) * 5; } else { return (y > x) - 3; } }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Interval, ExpressionAST>::new(&finished);
+        let ad = LatticeDomain::<ClassId, Interval, Term>::new(&finished);
+        let num_params = Cell::new(0);
+        let graph = RefCell::new(EGraph::new());
+        let static_phis = RefCell::new(BTreeMap::new());
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
         ai_func(ad, &program.funcs[0], &HashMap::new());
         let joined = finished
             .into_inner()
@@ -132,7 +138,11 @@ mod tests {
         let program = "fn basic() { x = 10; while x { x = x / 2; } return x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
-        let ad = LatticeDomain::<Symbol, Interval, ExpressionAST>::new(&finished);
+        let ad = LatticeDomain::<ClassId, Interval, Term>::new(&finished);
+        let num_params = Cell::new(0);
+        let graph = RefCell::new(EGraph::new());
+        let static_phis = RefCell::new(BTreeMap::new());
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
         ai_func(ad, &program.funcs[0], &HashMap::new());
         assert_eq!(
             finished.into_inner().into_iter().next().unwrap().1,

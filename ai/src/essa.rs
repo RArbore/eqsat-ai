@@ -459,7 +459,7 @@ where
 
         for (var, self_val, other_val) in intersect_btree_maps(&self.var_to_val, &other.var_to_val)
         {
-            let mut make_phi = || {
+            let mut make_phi = |static_phi| {
                 let phi = self.graph.borrow_mut().makeset();
                 let phi = self.graph.borrow_mut().insert(&Term::Phi(
                     BlockId(unique_id as u32),
@@ -467,29 +467,26 @@ where
                     *other_val,
                     phi,
                 ));
-                self_ad.assign(phi, self_ad.lookup(*self_val));
-                other_ad.assign(phi, other_ad.lookup(*other_val));
+                self_ad.assign(static_phi, self_ad.lookup(*self_val));
+                other_ad.assign(static_phi, other_ad.lookup(*other_val));
                 phi
             };
             if *self_val == *other_val {
                 var_to_val.insert(*var, *self_val);
             } else if let Some(entry) = static_phis.get_mut(var) {
                 var_to_val.insert(*var, entry.0);
-                let last_expr = make_phi();
+                let last_expr = make_phi(entry.0);
                 entry.1 = last_expr;
             } else {
                 let static_phi = self.graph.borrow_mut().makeset();
-                let last_expr = make_phi();
+                let last_expr = make_phi(static_phi);
                 static_phis.insert(*var, (static_phi, last_expr));
                 var_to_val.insert(*var, static_phi);
                 new_static_phi = true;
             }
         }
 
-        let mut merged_ad = self_ad.widen(&other_ad, unique_id);
-        for (_, (static_phi, last_expr)) in static_phis.iter() {
-            merged_ad.assign(*static_phi, merged_ad.lookup(*last_expr));
-        }
+        let merged_ad = self_ad.widen(&other_ad, unique_id);
         if !new_static_phi {
             for (_, (static_phi, last_expr)) in static_phis {
                 self.graph.borrow_mut().merge(*static_phi, *last_expr);
