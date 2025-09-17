@@ -224,4 +224,27 @@ mod tests {
             HashSet::from_iter(vec![Concrete::Value(15), Concrete::Value(9)].into_iter())
         );
     }
+
+    #[test]
+    fn abstract_interpret7() {
+        let mut interner = Interner::new();
+        let program = "fn basic(x, y) { if (x + y) == (y + x) { return 0; } else { return 1; } }";
+        let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
+        let ad = LatticeDomain::<ClassId, Concrete, Term>::new(&finished);
+        let num_params = Cell::new(0);
+        let graph = RefCell::new(EGraph::new());
+        let static_phis = RefCell::new(BTreeMap::new());
+        let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
+        ai_func(ad, &program.funcs[0], &HashMap::new());
+        let finished: HashSet<_> = finished
+            .into_inner()
+            .into_iter()
+            .map(|(_, val)| val)
+            .collect();
+        assert_eq!(
+            finished,
+            HashSet::from_iter(vec![Concrete::Value(0), Concrete::Value(1)].into_iter())
+        );
+    }
 }

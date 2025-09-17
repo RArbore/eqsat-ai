@@ -100,7 +100,10 @@ where
     }
 
     fn lookup(&self, var: Variable) -> Value {
-        self.var_to_val.get(&var).unwrap_or(&Value::top()).clone()
+        self.var_to_val
+            .get(&var)
+            .map(|val| val.clone())
+            .unwrap_or_else(|| Value::top())
     }
 
     fn assign(&mut self, var: Variable, val: Value) {

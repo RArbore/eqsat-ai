@@ -112,7 +112,7 @@ impl ForwardTransfer<ClassId, Term> for Concrete {
         let eval = |lhs, rhs, func: &dyn Fn(i32, i32) -> Option<i32>| {
             match (ad.lookup(lhs), ad.lookup(rhs)) {
                 (Concrete::Top, _) | (_, Concrete::Top) => Concrete::Top,
-                (Concrete::Bottom, _) | (_, Concrete::Bottom) => Concrete::Top,
+                (Concrete::Bottom, _) | (_, Concrete::Bottom) => Concrete::Bottom,
                 (Concrete::Value(lhs), Concrete::Value(rhs)) => {
                     if let Some(value) = func(lhs, rhs) {
                         Concrete::Value(value)
