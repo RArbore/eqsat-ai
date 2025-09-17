@@ -279,6 +279,17 @@ impl<T: ENode> EGraph<T> {
         self.uf.merge(a, b)
     }
 
+    pub fn nodes(&self) -> impl Iterator<Item = T> + '_ {
+        self.tables
+            .iter()
+            .map(|(sig, table)| {
+                table
+                    .rows()
+                    .map(|row| T::decode_from_row(row.0, row.1, sig.clone()))
+            })
+            .flatten()
+    }
+
     pub fn rebuild(&mut self) -> bool {
         let mut ever_changed = false;
         loop {
@@ -325,7 +336,7 @@ impl<T: ENode> EGraph<T> {
         }
     }
 
-    pub fn corebuild(&mut self) {
+    pub fn corebuild(&mut self) -> bool {
         let num_classes = self.uf.num_classes();
         let mut last_uf = UnionFind::new_all_equals(num_classes);
         let mut next_uf = UnionFind::new_all_not_equals(num_classes);
@@ -348,8 +359,12 @@ impl<T: ENode> EGraph<T> {
 
                 let num_cols = sig.num_det_cols + sig.num_dep_cols;
                 for idx in 0..before_roots.len() {
-                    let det = &canonicalized_rows[idx * num_cols..idx * num_cols + sig.num_det_cols];
-                    enode_to_eclasses.entry(det).or_default().push(before_roots[idx]);
+                    let det =
+                        &canonicalized_rows[idx * num_cols..idx * num_cols + sig.num_det_cols];
+                    enode_to_eclasses
+                        .entry(det)
+                        .or_default()
+                        .push(before_roots[idx]);
                 }
 
                 for equiv_classes in enode_to_eclasses.values() {
@@ -368,18 +383,24 @@ impl<T: ENode> EGraph<T> {
             }
         }
 
+        let mut changed = false;
         for idx in 0..num_classes {
             let id = ClassId::from(idx);
             let canon = last_uf.find(id);
+            changed = self.uf.find(id) != self.uf.find(canon) || changed;
             self.uf.merge(id, canon);
         }
+        changed
     }
 
-    pub fn full_repair(&mut self) {
+    pub fn full_repair(&mut self) -> bool {
+        let mut changed = false;
         loop {
-            self.corebuild();
+            changed = self.corebuild() || changed;
             if !self.rebuild() {
-                break;
+                break changed;
+            } else {
+                changed = true;
             }
         }
     }

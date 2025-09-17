@@ -276,6 +276,27 @@ where
             ad,
         }
     }
+
+    pub fn dumb_batch_rewrite(&mut self) {
+        let nodes: Vec<_> = self.graph.borrow().nodes().collect();
+        let mut graph = self.graph.borrow_mut();
+
+        for node in nodes {
+            match node {
+                Term::Add(lhs, rhs, root) => {
+                    graph.insert(&Term::Add(rhs, lhs, root));
+                }
+                Term::EqualsEquals(lhs, rhs, root) if lhs == rhs => {
+                    graph.insert(&Term::Constant(1, root));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    pub fn full_repair(&mut self) -> bool {
+        self.graph.borrow_mut().full_repair()
+    }
 }
 
 impl<'a, AD> PartialEq for ESSADomain<'a, AD>

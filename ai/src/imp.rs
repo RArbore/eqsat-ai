@@ -1,17 +1,21 @@
+use core::cell::RefCell;
 use core::fmt::Debug;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
+use ds::uf::ClassId;
 use imp::ast::Symbol;
 use imp::ast::{BlockAST, ExpressionAST, FunctionAST, StatementAST};
 
-use crate::domain::AbstractDomain;
+use crate::domain::{AbstractDomain, UnderstandsEquality};
+use crate::essa::{ESSADomain, Term};
 
-pub fn ai_func<AD>(
-    mut ad: AD,
+pub fn ai_func<'a, AD>(
+    mut ad: ESSADomain<'a, AD>,
     function: &FunctionAST,
-    param_abstractions: &HashMap<Symbol, AD::Value>,
+    param_abstractions: &HashMap<Symbol, (ClassId, AD::Value)>,
+    finished: &RefCell<BTreeMap<usize, AD::Value>>,
 ) where
-    AD: AbstractDomain<Variable = Symbol, Expression = ExpressionAST> + Debug,
+    AD: UnderstandsEquality<Variable = ClassId, Expression = Term> + Debug,
 {
     let mut unique_id = 0;
     for param in &function.params {
@@ -21,7 +25,12 @@ pub fn ai_func<AD>(
             ad.assign(*param, ad.bottom());
         }
     }
-    ai_block(ad, &function.block, &mut unique_id);
+    for _ in 0..10 {
+        finished.borrow_mut().clear();
+        ai_block(ad.clone(), &function.block, &mut unique_id);
+        ad.dumb_batch_rewrite();
+        ad.full_repair();
+    }
 }
 
 pub fn ai_block<AD>(mut ad: AD, block: &BlockAST, unique_id: &mut usize) -> Option<AD>
@@ -122,7 +131,7 @@ mod tests {
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
-        ai_func(ad, &program.funcs[0], &HashMap::new());
+        ai_func(ad, &program.funcs[0], &HashMap::new(), &finished);
         let joined = finished
             .into_inner()
             .values()
@@ -143,7 +152,7 @@ mod tests {
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
-        ai_func(ad, &program.funcs[0], &HashMap::new());
+        ai_func(ad, &program.funcs[0], &HashMap::new(), &finished);
         assert_eq!(
             finished.into_inner().into_iter().next().unwrap().1,
             Interval {
@@ -159,11 +168,12 @@ mod tests {
         let program =
             "fn basic(x, y, z) { if x > y { z = x + y; } else { y = z - x; } return z + y + x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis, ());
-        ai_func(ad, &program.funcs[0], &HashMap::new());
+        ai_func(ad, &program.funcs[0], &HashMap::new(), &finished);
         graph.borrow_mut().full_repair();
     }
 
@@ -172,11 +182,12 @@ mod tests {
         let mut interner = Interner::new();
         let program = "fn basic(x) { y = x; while x { x = x - 1; y = y - 1; } return y + x; }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
+        let finished = RefCell::new(BTreeMap::new());
         let num_params = Cell::new(0);
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis, ());
-        ai_func(ad, &program.funcs[0], &HashMap::new());
+        ai_func(ad, &program.funcs[0], &HashMap::new(), &finished);
         graph.borrow_mut().full_repair();
     }
 
@@ -195,7 +206,7 @@ mod tests {
         let param = graph.borrow_mut().makeset();
         graph.borrow_mut().insert(&Term::Parameter(0, param));
         param_abstractions.insert(interner.get_or_intern("x"), (param, Concrete::Value(5)));
-        ai_func(ad, &program.funcs[0], &param_abstractions);
+        ai_func(ad, &program.funcs[0], &param_abstractions, &finished);
         assert_eq!(
             finished.into_inner().into_iter().next().unwrap().1,
             Concrete::Value(120),
@@ -213,7 +224,7 @@ mod tests {
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
-        ai_func(ad, &program.funcs[0], &HashMap::new());
+        ai_func(ad, &program.funcs[0], &HashMap::new(), &finished);
         let finished: HashSet<_> = finished
             .into_inner()
             .into_iter()
@@ -236,7 +247,7 @@ mod tests {
         let graph = RefCell::new(EGraph::new());
         let static_phis = RefCell::new(BTreeMap::new());
         let ad = ESSADomain::new(&num_params, &graph, &static_phis, ad);
-        ai_func(ad, &program.funcs[0], &HashMap::new());
+        ai_func(ad, &program.funcs[0], &HashMap::new(), &finished);
         let finished: HashSet<_> = finished
             .into_inner()
             .into_iter()
@@ -244,7 +255,7 @@ mod tests {
             .collect();
         assert_eq!(
             finished,
-            HashSet::from_iter(vec![Concrete::Value(0), Concrete::Value(1)].into_iter())
+            HashSet::from_iter(vec![Concrete::Value(0)].into_iter())
         );
     }
 }
