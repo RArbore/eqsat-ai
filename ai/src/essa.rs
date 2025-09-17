@@ -48,6 +48,28 @@ pub enum Term {
     GreaterEquals(ClassId, ClassId, ClassId),
 }
 
+impl Term {
+    fn root(&self) -> ClassId {
+        use Term::*;
+        match self {
+            Constant(_, root)
+            | Parameter(_, root)
+            | Phi(_, _, _, root)
+            | Add(_, _, root)
+            | Subtract(_, _, root)
+            | Multiply(_, _, root)
+            | Divide(_, _, root)
+            | Modulo(_, _, root)
+            | EqualsEquals(_, _, root)
+            | NotEquals(_, _, root)
+            | Less(_, _, root)
+            | LessEquals(_, _, root)
+            | Greater(_, _, root)
+            | GreaterEquals(_, _, root) => *root,
+        }
+    }
+}
+
 impl ENode for Term {
     fn signature(&self) -> Signature {
         use Term::*;
@@ -327,16 +349,24 @@ where
     }
 
     fn forward_transfer(&mut self, expr: &ExpressionAST) -> (ClassId, AD::Value) {
+        for _ in 0..10 {
+            let terms: Vec<_> = self.graph.borrow().nodes().collect();
+            for term in terms {
+                let forward = self.ad.forward_transfer(&term);
+                self.ad.meet_assign(term.root(), forward);
+            }
+        }
+
         let handle_binary_op =
             |s: &mut Self, mk_term: &dyn Fn(ClassId, ClassId, ClassId) -> Term, lhs, rhs| {
                 let lhs = s.forward_transfer(lhs);
                 let rhs = s.forward_transfer(rhs);
                 let root = s.graph.borrow_mut().makeset();
                 let term = mk_term(lhs.0, rhs.0, root);
-                (
-                    s.graph.borrow_mut().insert(&term),
-                    s.ad.forward_transfer(&term),
-                )
+                let new_root = s.graph.borrow_mut().insert(&term);
+                let forward = s.ad.forward_transfer(&term);
+                s.ad.assign(root, forward);
+                (new_root, s.ad.merge(root, new_root).0)
             };
         use ExpressionAST::*;
         let (class_id, ad_value) = match expr {
@@ -566,6 +596,10 @@ impl AbstractDomain for () {
 impl UnderstandsEquality for () {
     fn merge(&mut self, _a: ClassId, _b: ClassId) -> (Self::Value, bool) {
         ((), false)
+    }
+
+    fn meet_assign(&mut self, _id: ClassId, _val: Self::Value) -> Self::Value {
+        ()
     }
 
     fn dom(&self) -> impl Iterator<Item = ClassId> + '_ {

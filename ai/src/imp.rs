@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn abstract_interpret7() {
         let mut interner = Interner::new();
-        let program = "fn basic(x, y) { if (x + y) == (y + x) { return 0; } else { return 1; } }";
+        let program = "fn basic(x, y) { if (x + y) == (y + x) { return 24; } else { return 42; } }";
         let program = ProgramParser::new().parse(&mut interner, &program).unwrap();
         let finished = RefCell::new(BTreeMap::new());
         let ad = LatticeDomain::<ClassId, Concrete, Term>::new(&finished);
@@ -255,7 +255,7 @@ mod tests {
             .collect();
         assert_eq!(
             finished,
-            HashSet::from_iter(vec![Concrete::Value(0)].into_iter())
+            HashSet::from_iter(vec![Concrete::Value(24)].into_iter())
         );
     }
 }

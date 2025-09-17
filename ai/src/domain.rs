@@ -1,4 +1,5 @@
 use core::cell::RefCell;
+use core::fmt::Debug;
 use core::marker::PhantomData;
 use std::collections::BTreeMap;
 
@@ -6,10 +7,10 @@ use ds::uf::{ClassId, UnionFind};
 
 use crate::intersect_btree_maps;
 
-pub trait AbstractDomain: Clone + PartialEq {
-    type Variable;
-    type Value: Clone;
-    type Expression;
+pub trait AbstractDomain: Clone + PartialEq + Debug {
+    type Variable: Debug;
+    type Value: Clone + Debug;
+    type Expression: Debug;
 
     fn bottom(&self) -> Self::Value;
     fn forward_transfer(&mut self, expr: &Self::Expression) -> Self::Value;
@@ -42,13 +43,13 @@ pub trait ForwardTransfer<Variable, Expression> {
 }
 
 #[derive(Debug)]
-pub struct LatticeDomain<'a, Variable, Value, Expression> {
+pub struct LatticeDomain<'a, Variable: Debug, Value: Debug, Expression: Debug> {
     pub(crate) var_to_val: BTreeMap<Variable, Value>,
     finished: &'a RefCell<BTreeMap<usize, Value>>,
     _phantom: PhantomData<Expression>,
 }
 
-impl<'a, Variable, Value, Expression> LatticeDomain<'a, Variable, Value, Expression> {
+impl<'a, Variable: Debug, Value: Debug, Expression: Debug> LatticeDomain<'a, Variable, Value, Expression> {
     pub fn new(finished: &'a RefCell<BTreeMap<usize, Value>>) -> Self {
         Self {
             var_to_val: BTreeMap::new(),
@@ -58,7 +59,7 @@ impl<'a, Variable, Value, Expression> LatticeDomain<'a, Variable, Value, Express
     }
 }
 
-impl<'a, Variable, Value, Expression> Clone for LatticeDomain<'a, Variable, Value, Expression>
+impl<'a, Variable: Debug, Value: Debug, Expression: Debug> Clone for LatticeDomain<'a, Variable, Value, Expression>
 where
     Variable: Clone,
     Value: Clone,
@@ -72,7 +73,7 @@ where
     }
 }
 
-impl<'a, Variable, Value, Expression> PartialEq for LatticeDomain<'a, Variable, Value, Expression>
+impl<'a, Variable: Debug, Value: Debug, Expression: Debug> PartialEq for LatticeDomain<'a, Variable, Value, Expression>
 where
     Variable: PartialEq,
     Value: PartialEq,
@@ -82,7 +83,7 @@ where
     }
 }
 
-impl<Variable, Expression, Value> AbstractDomain for LatticeDomain<'_, Variable, Value, Expression>
+impl<Variable: Debug, Expression: Debug, Value: Debug> AbstractDomain for LatticeDomain<'_, Variable, Value, Expression>
 where
     Variable: Clone + PartialEq + Ord,
     Value: Clone + PartialEq + Lattice + ForwardTransfer<Variable, Expression>,
@@ -153,6 +154,7 @@ where
 
 pub trait UnderstandsEquality: AbstractDomain<Variable = ClassId> {
     fn merge(&mut self, a: ClassId, b: ClassId) -> (Self::Value, bool);
+    fn meet_assign(&mut self, id: ClassId, val: Self::Value) -> Self::Value;
     fn dom(&self) -> impl Iterator<Item = ClassId> + '_;
 
     fn canonicalize(&mut self, uf: &mut UnionFind) {
@@ -172,7 +174,7 @@ pub trait UnderstandsEquality: AbstractDomain<Variable = ClassId> {
     }
 }
 
-impl<Expression, Value> UnderstandsEquality for LatticeDomain<'_, ClassId, Value, Expression>
+impl<Expression: Debug, Value: Debug> UnderstandsEquality for LatticeDomain<'_, ClassId, Value, Expression>
 where
     Value: Clone + PartialEq + Lattice + ForwardTransfer<ClassId, Expression>,
 {
@@ -196,6 +198,17 @@ where
                 let changed = new_val != old_a || new_val != old_b;
                 (new_val, changed)
             }
+        }
+    }
+
+    fn meet_assign(&mut self, id: ClassId, val: Self::Value) -> Self::Value {
+        if let Some(old_val) = self.var_to_val.get(&id) && *old_val != Self::Value::top() {
+            let new_val = val.meet(old_val);
+            self.assign(id, new_val.clone());
+            new_val
+        } else {
+            self.assign(id, val.clone());
+            val
         }
     }
 
