@@ -2,6 +2,8 @@ use core::cell::RefCell;
 use core::marker::PhantomData;
 use std::collections::BTreeMap;
 
+use ds::uf::{ClassId, UnionFind};
+
 use crate::intersect_btree_maps;
 
 pub trait AbstractDomain: Clone + PartialEq {
@@ -19,7 +21,7 @@ pub trait AbstractDomain: Clone + PartialEq {
     fn widen(&self, other: &Self, unique_id: usize) -> Self;
 }
 
-pub trait Lattice {
+pub trait Lattice: PartialEq {
     fn top() -> Self;
     fn bottom() -> Self;
     fn join(&self, other: &Self) -> Self;
@@ -41,7 +43,7 @@ pub trait ForwardTransfer<Variable, Expression> {
 
 #[derive(Debug)]
 pub struct LatticeDomain<'a, Variable, Value, Expression> {
-    var_to_val: BTreeMap<Variable, Value>,
+    pub(crate) var_to_val: BTreeMap<Variable, Value>,
     finished: &'a RefCell<BTreeMap<usize, Value>>,
     _phantom: PhantomData<Expression>,
 }
@@ -143,5 +145,58 @@ where
             finished: self.finished,
             _phantom: PhantomData,
         }
+    }
+}
+
+pub trait UnderstandsEquality: AbstractDomain<Variable = ClassId> {
+    fn merge(&mut self, a: ClassId, b: ClassId) -> (Self::Value, bool);
+    fn dom(&self) -> impl Iterator<Item = ClassId> + '_;
+
+    fn canonicalize(&mut self, uf: &mut UnionFind) {
+        loop {
+            let mut changed = false;
+            let dom: Vec<_> = self.dom().collect();
+            for id in &dom {
+                let canon = uf.find(*id);
+                if *id != canon {
+                    changed = self.merge(*id, canon).1 || changed;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+}
+
+impl<Expression, Value> UnderstandsEquality for LatticeDomain<'_, ClassId, Value, Expression>
+where
+    Value: Clone + PartialEq + Lattice + ForwardTransfer<ClassId, Expression>,
+{
+    fn merge(&mut self, a: ClassId, b: ClassId) -> (Self::Value, bool) {
+        match (self.var_to_val.get(&a), self.var_to_val.get(&b)) {
+            (None, None) => (Value::bottom(), false),
+            (None, Some(val)) => {
+                let val = val.clone();
+                self.assign(a, val.clone());
+                (val, true)
+            }
+            (Some(val), None) => {
+                let val = val.clone();
+                self.assign(b, val.clone());
+                (val.clone(), true)
+            }
+            (Some(a_val), Some(b_val)) => {
+                let new_val = a_val.meet(b_val);
+                let old_a = self.var_to_val.insert(a, new_val.clone()).unwrap();
+                let old_b = self.var_to_val.insert(b, new_val.clone()).unwrap();
+                let changed = new_val != old_a || new_val != old_b;
+                (new_val, changed)
+            }
+        }
+    }
+
+    fn dom(&self) -> impl Iterator<Item = ClassId> + '_ {
+        self.var_to_val.keys().map(|id| *id)
     }
 }

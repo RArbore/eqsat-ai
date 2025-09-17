@@ -1,4 +1,5 @@
 use core::cell::{Cell, RefCell};
+use core::iter::empty;
 use std::collections::BTreeMap;
 
 use bitvec::bitarr;
@@ -8,7 +9,7 @@ use ds::egraph::{EGraph, ENode, Signature};
 use ds::uf::ClassId;
 use imp::ast::{ExpressionAST, Symbol};
 
-use crate::domain::AbstractDomain;
+use crate::domain::{AbstractDomain, UnderstandsEquality};
 use crate::intersect_btree_maps;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -247,7 +248,7 @@ impl ENode for Term {
 #[derive(Clone, Debug)]
 pub struct ESSADomain<'a, AD>
 where
-    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+    AD: UnderstandsEquality<Variable = ClassId, Expression = Term>,
 {
     var_to_val: BTreeMap<Symbol, ClassId>,
     num_params: &'a Cell<u32>,
@@ -259,7 +260,7 @@ where
 
 impl<'a, AD> ESSADomain<'a, AD>
 where
-    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+    AD: UnderstandsEquality<Variable = ClassId, Expression = Term>,
 {
     pub fn new(
         num_params: &'a Cell<u32>,
@@ -279,7 +280,7 @@ where
 
 impl<'a, AD> PartialEq for ESSADomain<'a, AD>
 where
-    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+    AD: UnderstandsEquality<Variable = ClassId, Expression = Term>,
 {
     fn eq(&self, other: &Self) -> bool {
         self.var_to_val == other.var_to_val && self.ad == other.ad
@@ -288,7 +289,7 @@ where
 
 impl<'a, AD> AbstractDomain for ESSADomain<'a, AD>
 where
-    AD: AbstractDomain<Variable = ClassId, Expression = Term>,
+    AD: UnderstandsEquality<Variable = ClassId, Expression = Term>,
 {
     type Variable = Symbol;
     type Value = (ClassId, AD::Value);
@@ -538,5 +539,15 @@ impl AbstractDomain for () {
 
     fn widen(&self, _other: &Self, _unique_id: usize) -> Self {
         ()
+    }
+}
+
+impl UnderstandsEquality for () {
+    fn merge(&mut self, _a: ClassId, _b: ClassId) -> (Self::Value, bool) {
+        ((), false)
+    }
+
+    fn dom(&self) -> impl Iterator<Item = ClassId> + '_ {
+        empty()
     }
 }
