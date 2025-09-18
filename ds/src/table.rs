@@ -9,7 +9,7 @@ use hashbrown::hash_table::Entry;
 use rustc_hash::FxHasher;
 
 pub type Value = u32;
-type RowId = u64;
+pub type RowId = u64;
 type HashCode = u64;
 
 #[derive(Debug)]
@@ -39,11 +39,10 @@ struct TableRows<'a> {
     deleted_iter: Peekable<Iter<'a, RowId>>,
 }
 
-pub struct Merger<'a, MF>
+pub struct Merger<MF>
 where
     MF: FnMut(&[Value], &[Value], &mut [Value]),
 {
-    table: &'a mut Table,
     merge_fn: MF,
     scratch: Vec<Value>,
 }
@@ -96,11 +95,11 @@ impl Table {
         }
     }
 
-    fn num_determinant(&self) -> usize {
+    pub fn num_determinant(&self) -> usize {
         self.rows.num_determinant
     }
 
-    fn num_dependent(&self) -> usize {
+    pub fn num_dependent(&self) -> usize {
         self.rows.num_dependent
     }
 
@@ -143,7 +142,7 @@ impl Table {
         row
     }
 
-    pub fn rows(&self) -> impl Iterator<Item = &[Value]> + '_ {
+    pub fn rows(&self) -> impl Iterator<Item = (&[Value], RowId)> + '_ {
         TableRows {
             table: self,
             row: 0,
@@ -153,7 +152,7 @@ impl Table {
 }
 
 impl<'a> Iterator for TableRows<'a> {
-    type Item = &'a [Value];
+    type Item = (&'a [Value], RowId);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(recent_deleted) = self.deleted_iter.peek() {
@@ -170,28 +169,26 @@ impl<'a> Iterator for TableRows<'a> {
         } else {
             let row = self.row;
             self.row += 1;
-            Some(self.table.rows.get_row(row))
+            Some((self.table.rows.get_row(row), row))
         }
     }
 }
 
-impl<'a, MF> Merger<'a, MF>
+impl<MF> Merger<MF>
 where
     MF: FnMut(&[Value], &[Value], &mut [Value]),
 {
-    pub fn new(table: &'a mut Table, merge_fn: MF) -> Self {
-        let num_columns = table.num_determinant() + table.num_dependent();
+    pub fn new(num_columns: usize, merge_fn: MF) -> Self {
         Self {
-            table,
             merge_fn,
             scratch: vec![0; num_columns],
         }
     }
 
-    pub fn insert<'b, 'c>(&'b mut self, row: &'c [Value]) -> &'b [Value] {
-        let num_determinant = self.table.num_determinant();
-        let would_be_new_id = self.table.rows.num_rows();
-        let (in_row, row_id) = self.table.insert(row);
+    pub fn insert<'a, 'b, 'c>(&'a mut self, table: &'b mut Table, row: &'c [Value]) -> &'b [Value] {
+        let num_determinant = table.num_determinant();
+        let would_be_new_id = table.rows.num_rows();
+        let (in_row, row_id) = table.insert(row);
         if row_id == would_be_new_id {
             let in_row = &in_row[num_determinant..];
             return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
@@ -206,8 +203,8 @@ where
             let in_row = &in_row[num_determinant..];
             return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
         }
-        self.table.delete(row_id);
-        self.table.insert(&self.scratch).0
+        table.delete(row_id);
+        table.insert(&self.scratch).0
     }
 }
 
@@ -222,7 +219,7 @@ where
         }
     }
 
-    pub fn canon<'a, 'b>(&'a mut self, row: &'b[Value]) -> Option<&'a [Value]> {
+    pub fn canon<'a, 'b>(&'a mut self, row: &'b [Value]) -> Option<&'a [Value]> {
         (self.canon_fn)(row, &mut self.scratch);
         if self.scratch == row {
             None
@@ -232,9 +229,52 @@ where
     }
 }
 
+pub fn rebuild<CF, MF>(table: &mut Table, mf: MF, cf: CF) -> bool
+where
+    MF: FnMut(&[Value], &[Value], &mut [Value]),
+    CF: FnMut(&[Value], &mut [Value]),
+{
+    let num_columns = table.num_determinant() + table.num_dependent();
+    let mut canonizer = Canonizer::new(num_columns, cf);
+    let mut merger = Merger::new(num_columns, mf);
+    let mut canonized: Vec<Value> = vec![];
+    let mut to_delete: Vec<RowId> = vec![];
+    let mut ever_changed = false;
+    loop {
+        let mut changed = false;
+
+        for (row, row_id) in table.rows() {
+            if let Some(canon_row) = canonizer.canon(row) {
+                changed = true;
+                canonized.extend(canon_row);
+                to_delete.push(row_id);
+            }
+        }
+
+        for row in to_delete.drain(..) {
+            table.delete(row);
+        }
+
+        let num_rows = canonized.len() / num_columns;
+        for idx in 0..num_rows {
+            let canon_row = &canonized[idx * num_columns..(idx + 1) * num_columns];
+            merger.insert(table, canon_row);
+        }
+        canonized.clear();
+
+        if !changed {
+            break ever_changed;
+        } else {
+            ever_changed = true;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::cmp::min;
+
+    use crate::uf::{ClassId, UnionFind};
 
     use super::*;
 
@@ -245,13 +285,13 @@ mod tests {
         assert_eq!(table.insert(&[1, 2, 4]), (&[1u32, 2, 3] as _, 0));
         assert_eq!(table.insert(&[2, 2, 4]), (&[2u32, 2, 4] as _, 1));
         assert_eq!(
-            vec![&[1, 2, 3], &[2, 2, 4]],
+            vec![(&[1u32, 2, 3] as _, 0), (&[2u32, 2, 4] as _, 1)],
             table.rows().collect::<Vec<_>>()
         );
         assert_eq!(table.delete(1), &[2, 2, 4]);
         assert_eq!(table.insert(&[2, 2, 5]), (&[2u32, 2, 5] as _, 2));
         assert_eq!(
-            vec![&[1, 2, 3], &[2, 2, 5]],
+            vec![(&[1u32, 2, 3] as _, 0), (&[2u32, 2, 5] as _, 2)],
             table.rows().collect::<Vec<_>>()
         );
     }
@@ -259,14 +299,14 @@ mod tests {
     #[test]
     fn simple_merge() {
         let mut table = Table::new(2, 1);
-        let mut merger = Merger::new(&mut table, |a, b, dst| dst[0] = min(a[0], b[0]));
-        merger.insert(&[1, 2, 5]);
-        merger.insert(&[1, 2, 3]);
-        merger.insert(&[2, 2, 7]);
-        merger.insert(&[2, 2, 9]);
-        merger.insert(&[1, 2, 4]);
+        let mut merger = Merger::new(3, |a, b, dst| dst[0] = min(a[0], b[0]));
+        merger.insert(&mut table, &[1, 2, 5]);
+        merger.insert(&mut table, &[1, 2, 3]);
+        merger.insert(&mut table, &[2, 2, 7]);
+        merger.insert(&mut table, &[2, 2, 9]);
+        merger.insert(&mut table, &[1, 2, 4]);
         assert_eq!(
-            vec![&[1, 2, 3], &[2, 2, 7]],
+            vec![(&[1u32, 2, 3] as _, 1), (&[2u32, 2, 7] as _, 2)],
             table.rows().collect::<Vec<_>>()
         );
         assert_eq!(table.rows.num_rows(), 3);
@@ -279,5 +319,42 @@ mod tests {
         assert_eq!(canonizer.canon(row), Some(&[2u32] as _));
         let row = &[4];
         assert_eq!(canonizer.canon(row), None);
+    }
+
+    #[test]
+    fn simple_rebuild() {
+        let mut table = Table::new(1, 1);
+        let mut uf = UnionFind::new();
+
+        let id1 = uf.makeset();
+        let id2 = uf.makeset();
+        let id3 = uf.makeset();
+        let id4 = uf.makeset();
+
+        table.insert(&[id1.into(), id2.into()]);
+        table.insert(&[id3.into(), id4.into()]);
+        assert_eq!(
+            vec![(&[0u32, 1] as _, 0), (&[2u32, 3] as _, 1)],
+            table.rows().collect::<Vec<_>>()
+        );
+
+        uf.merge(id1, id3);
+        rebuild(
+            &mut table,
+            |lhs, rhs, dst| {
+                dst[0] = uf
+                    .merge(ClassId::from(lhs[0]), ClassId::from(rhs[0]))
+                    .into()
+            },
+            |x, dst| {
+                dst[0] = uf.find(ClassId::from(x[0])).into();
+                dst[1] = uf.find(ClassId::from(x[1])).into();
+            },
+        );
+
+        assert_eq!(
+            vec![(&[0u32, 1] as _, 0)],
+            table.rows().collect::<Vec<_>>()
+        );
     }
 }
