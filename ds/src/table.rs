@@ -201,9 +201,9 @@ where
         }
         self.scratch.copy_from_slice(row);
         (self.merge_fn)(
-            &row[num_determinant..],
-            &in_row[num_determinant..],
-            &mut self.scratch[num_determinant..],
+            &row,
+            &in_row,
+            &mut self.scratch,
         );
         if &in_row[num_determinant..] == &mut self.scratch[num_determinant..] {
             let in_row = &in_row[num_determinant..];
@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn simple_merge() {
         let mut table = Table::new(2, 1);
-        let mut merger = Merger::new(3, |a, b, dst| dst[0] = min(a[0], b[0]));
+        let mut merger = Merger::new(3, |a, b, dst| dst[2] = min(a[2], b[2]));
         merger.insert(&mut table, &[1, 2, 5]);
         merger.insert(&mut table, &[1, 2, 3]);
         merger.insert(&mut table, &[2, 2, 7]);
@@ -348,8 +348,8 @@ mod tests {
         rebuild(
             &mut table,
             |lhs, rhs, dst| {
-                dst[0] = uf
-                    .merge(ClassId::from(lhs[0]), ClassId::from(rhs[0]))
+                dst[1] = uf
+                    .merge(ClassId::from(lhs[1]), ClassId::from(rhs[1]))
                     .into()
             },
             |x, dst| {
