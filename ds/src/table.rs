@@ -2,6 +2,7 @@ use core::hash::Hasher;
 use std::collections::BTreeSet;
 use std::collections::btree_set::Iter;
 use std::iter::Peekable;
+use std::slice::from_raw_parts;
 
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
@@ -38,6 +39,15 @@ struct TableRows<'a> {
     deleted_iter: Peekable<Iter<'a, RowId>>,
 }
 
+pub struct Merger<'a, MF>
+where
+    MF: FnMut(&[Value], &[Value], &mut [Value]),
+{
+    table: &'a mut Table,
+    merge_fn: MF,
+    scratch: Vec<Value>,
+}
+
 fn hash(determinant: &[Value]) -> HashCode {
     let mut hasher = FxHasher::default();
     for val in determinant {
@@ -66,8 +76,8 @@ impl Rows {
 }
 
 impl Table {
-    pub fn new(num_determinant: usize, num_dependent: usize) -> Table {
-        Table {
+    pub fn new(num_determinant: usize, num_dependent: usize) -> Self {
+        Self {
             rows: Rows {
                 buffer: vec![],
                 num_determinant,
@@ -86,7 +96,7 @@ impl Table {
         self.rows.num_dependent
     }
 
-    pub fn insert(&mut self, row: &[Value]) -> (&[Value], RowId) {
+    pub fn insert<'a, 'b>(&'a mut self, row: &'b [Value]) -> (&'a [Value], RowId) {
         let num_determinant = self.num_determinant();
         let num_dependent = self.num_dependent();
         assert_eq!(row.len(), num_determinant + num_dependent);
@@ -157,8 +167,46 @@ impl<'a> Iterator for TableRows<'a> {
     }
 }
 
+impl<'a, MF> Merger<'a, MF>
+where
+    MF: FnMut(&[Value], &[Value], &mut [Value]),
+{
+    pub fn new(table: &'a mut Table, merge_fn: MF) -> Self {
+        let num_columns = table.num_determinant() + table.num_dependent();
+        Self {
+            table,
+            merge_fn,
+            scratch: vec![0; num_columns],
+        }
+    }
+
+    pub fn insert<'b, 'c>(&'b mut self, row: &'c [Value]) -> &'b [Value] {
+        let num_determinant = self.table.num_determinant();
+        let would_be_new_id = self.table.rows.num_rows();
+        let (in_row, row_id) = self.table.insert(row);
+        if row_id == would_be_new_id {
+            let in_row = &in_row[num_determinant..];
+            return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
+        }
+        self.scratch.copy_from_slice(row);
+        (self.merge_fn)(
+            &row[num_determinant..],
+            &in_row[num_determinant..],
+            &mut self.scratch[num_determinant..],
+        );
+        if &in_row[num_determinant..] == &mut self.scratch[num_determinant..] {
+            let in_row = &in_row[num_determinant..];
+            return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
+        }
+        self.table.delete(row_id);
+        self.table.insert(&self.scratch).0
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use core::cmp::min;
+
     use super::*;
 
     #[test]
@@ -167,9 +215,31 @@ mod tests {
         assert_eq!(table.insert(&[1, 2, 3]), (&[1u32, 2, 3] as _, 0));
         assert_eq!(table.insert(&[1, 2, 4]), (&[1u32, 2, 3] as _, 0));
         assert_eq!(table.insert(&[2, 2, 4]), (&[2u32, 2, 4] as _, 1));
-        assert_eq!(vec![&[1, 2, 3], &[2, 2, 4]], table.rows().collect::<Vec<_>>());
+        assert_eq!(
+            vec![&[1, 2, 3], &[2, 2, 4]],
+            table.rows().collect::<Vec<_>>()
+        );
         assert_eq!(table.delete(1), &[2, 2, 4]);
         assert_eq!(table.insert(&[2, 2, 5]), (&[2u32, 2, 5] as _, 2));
-        assert_eq!(vec![&[1, 2, 3], &[2, 2, 5]], table.rows().collect::<Vec<_>>());
+        assert_eq!(
+            vec![&[1, 2, 3], &[2, 2, 5]],
+            table.rows().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn simple_merge() {
+        let mut table = Table::new(2, 1);
+        let mut merger = Merger::new(&mut table, |a, b, dst| dst[0] = min(a[0], b[0]));
+        merger.insert(&[1, 2, 5]);
+        merger.insert(&[1, 2, 3]);
+        merger.insert(&[2, 2, 7]);
+        merger.insert(&[2, 2, 9]);
+        merger.insert(&[1, 2, 4]);
+        assert_eq!(
+            vec![&[1, 2, 3], &[2, 2, 7]],
+            table.rows().collect::<Vec<_>>()
+        );
+        assert_eq!(table.rows.num_rows(), 3);
     }
 }
