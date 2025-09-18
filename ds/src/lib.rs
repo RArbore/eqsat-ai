@@ -1,2 +1,2 @@
-pub mod egraph;
+pub mod table;
 pub mod uf;
