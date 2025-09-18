@@ -30,6 +30,7 @@ pub struct Table {
     rows: Rows,
     table: HashTable<TableEntry>,
     deleted_rows: BTreeSet<RowId>,
+    delta_marker: RowId,
 }
 
 #[derive(Debug)]
@@ -92,6 +93,7 @@ impl Table {
             },
             table: HashTable::new(),
             deleted_rows: BTreeSet::new(),
+            delta_marker: 0,
         }
     }
 
@@ -101,6 +103,10 @@ impl Table {
 
     pub fn num_dependent(&self) -> usize {
         self.rows.num_dependent
+    }
+
+    pub fn mark_delta(&mut self) {
+        self.delta_marker = self.rows.num_rows();
     }
 
     pub fn insert<'a, 'b>(&'a mut self, row: &'b [Value]) -> (&'a [Value], RowId) {
@@ -142,10 +148,10 @@ impl Table {
         row
     }
 
-    pub fn rows(&self) -> impl Iterator<Item = (&[Value], RowId)> + '_ {
+    pub fn rows(&self, delta: bool) -> impl Iterator<Item = (&[Value], RowId)> + '_ {
         TableRows {
             table: self,
-            row: 0,
+            row: if delta { self.delta_marker } else { 0 },
             deleted_iter: self.deleted_rows.iter().peekable(),
         }
     }
@@ -243,7 +249,7 @@ where
     loop {
         let mut changed = false;
 
-        for (row, row_id) in table.rows() {
+        for (row, row_id) in table.rows(false) {
             if let Some(canon_row) = canonizer.canon(row) {
                 changed = true;
                 canonized.extend(canon_row);
@@ -286,13 +292,13 @@ mod tests {
         assert_eq!(table.insert(&[2, 2, 4]), (&[2u32, 2, 4] as _, 1));
         assert_eq!(
             vec![(&[1u32, 2, 3] as _, 0), (&[2u32, 2, 4] as _, 1)],
-            table.rows().collect::<Vec<_>>()
+            table.rows(false).collect::<Vec<_>>()
         );
         assert_eq!(table.delete(1), &[2, 2, 4]);
         assert_eq!(table.insert(&[2, 2, 5]), (&[2u32, 2, 5] as _, 2));
         assert_eq!(
             vec![(&[1u32, 2, 3] as _, 0), (&[2u32, 2, 5] as _, 2)],
-            table.rows().collect::<Vec<_>>()
+            table.rows(false).collect::<Vec<_>>()
         );
     }
 
@@ -307,7 +313,7 @@ mod tests {
         merger.insert(&mut table, &[1, 2, 4]);
         assert_eq!(
             vec![(&[1u32, 2, 3] as _, 1), (&[2u32, 2, 7] as _, 2)],
-            table.rows().collect::<Vec<_>>()
+            table.rows(false).collect::<Vec<_>>()
         );
         assert_eq!(table.rows.num_rows(), 3);
     }
@@ -335,7 +341,7 @@ mod tests {
         table.insert(&[id3.into(), id4.into()]);
         assert_eq!(
             vec![(&[0u32, 1] as _, 0), (&[2u32, 3] as _, 1)],
-            table.rows().collect::<Vec<_>>()
+            table.rows(false).collect::<Vec<_>>()
         );
 
         uf.merge(id1, id3);
@@ -354,7 +360,28 @@ mod tests {
 
         assert_eq!(
             vec![(&[0u32, 1] as _, 0)],
-            table.rows().collect::<Vec<_>>()
+            table.rows(false).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn simple_delta() {
+        let mut table = Table::new(1, 1);
+        table.insert(&[0, 1]);
+        table.insert(&[1, 2]);
+        assert_eq!(
+            vec![(&[0u32, 1] as _, 0), (&[1u32, 2] as _, 1)],
+            table.rows(true).collect::<Vec<_>>()
+        );
+        table.mark_delta();
+        table.insert(&[2, 3]);
+        assert_eq!(
+            vec![(&[2u32, 3] as _, 2)],
+            table.rows(true).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec![(&[0u32, 1] as _, 0), (&[1u32, 2] as _, 1), (&[2u32, 3] as _, 2)],
+            table.rows(false).collect::<Vec<_>>()
         );
     }
 }
