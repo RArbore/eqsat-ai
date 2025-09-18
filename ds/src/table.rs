@@ -48,6 +48,14 @@ where
     scratch: Vec<Value>,
 }
 
+pub struct Canonizer<CF>
+where
+    CF: FnMut(&[Value], &mut [Value]),
+{
+    canon_fn: CF,
+    scratch: Vec<Value>,
+}
+
 fn hash(determinant: &[Value]) -> HashCode {
     let mut hasher = FxHasher::default();
     for val in determinant {
@@ -203,6 +211,27 @@ where
     }
 }
 
+impl<CF> Canonizer<CF>
+where
+    CF: FnMut(&[Value], &mut [Value]),
+{
+    pub fn new(num_columns: usize, canon_fn: CF) -> Self {
+        Self {
+            canon_fn,
+            scratch: vec![0; num_columns],
+        }
+    }
+
+    pub fn canon<'a, 'b>(&'a mut self, row: &'b[Value]) -> Option<&'a [Value]> {
+        (self.canon_fn)(row, &mut self.scratch);
+        if self.scratch == row {
+            None
+        } else {
+            Some(&self.scratch)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::cmp::min;
@@ -241,5 +270,14 @@ mod tests {
             table.rows().collect::<Vec<_>>()
         );
         assert_eq!(table.rows.num_rows(), 3);
+    }
+
+    #[test]
+    fn simple_canon() {
+        let mut canonizer = Canonizer::new(1, |x, dst| dst[0] = (x[0] >> 1) << 1);
+        let row = &[3];
+        assert_eq!(canonizer.canon(row), Some(&[2u32] as _));
+        let row = &[4];
+        assert_eq!(canonizer.canon(row), None);
     }
 }
