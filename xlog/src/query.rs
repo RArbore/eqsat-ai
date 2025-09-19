@@ -6,14 +6,14 @@ use ds::table::Value;
 use crate::database::{Database};
 use crate::frontend::{Slot, Query, Symbol};
 
-pub(crate) fn dumb_product_query(db: &Database, query: &Query) -> Vec<BTreeMap<Symbol, Value>> {
+pub fn dumb_product_query(db: &Database, query: &Query) -> Vec<BTreeMap<Symbol, Value>> {
     let mut subquery = query.clone();
     let Some(atom) = subquery.atoms.pop() else {
         return vec![BTreeMap::new()];
     };
 
     let submatches = dumb_product_query(db, &subquery);
-    let table = &db.tables[atom.table];
+    let table = db.table(atom.table);
     let mut matches = vec![];
     for m in submatches {
         for row in table.rows(false) {
@@ -53,10 +53,6 @@ pub(crate) fn dumb_product_query(db: &Database, query: &Query) -> Vec<BTreeMap<S
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use ds::table::Table;
-
     use crate::frontend::{Interner, Atom};
 
     use super::*;
@@ -66,19 +62,20 @@ mod tests {
         let mut interner = Interner::new();
         let symbol1 = interner.get_or_intern("x");
         let symbol2 = interner.get_or_intern("y");
-        let mut table1 = Table::new(1, 2);
-        let mut table2 = Table::new(1, 1);
+        let mut database = Database::new();
+        database.register_table(symbol1, 1, 2);
+        database.register_table(symbol2, 1, 1);
+        let id1 = database.table_id(symbol1);
+        let id2 = database.table_id(symbol2);
+        let table1 = database.table_mut(id1);
         table1.insert(&[0, 1, 4]);
         table1.insert(&[1, 1, 3]);
         table1.insert(&[3, 3, 2]);
+        let table2 = database.table_mut(id2);
         table2.insert(&[4, 0]);
         table2.insert(&[2, 3]);
         table2.insert(&[0, 0]);
         table2.insert(&[5, 1]);
-        let database = Database {
-            tables: vec![table1, table2],
-            table_names: HashMap::new(),
-        };
         let query = Query {
             atoms: vec![
                 Atom {

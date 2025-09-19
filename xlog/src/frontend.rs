@@ -6,36 +6,36 @@ use ds::table::Value;
 
 use crate::database::TableId;
 
-pub(crate) type Symbol = SymbolU16;
-pub(crate) type Interner = StringInterner<StringBackend<Symbol>>;
+pub type Symbol = SymbolU16;
+pub type Interner = StringInterner<StringBackend<Symbol>>;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Slot {
+pub enum Slot {
     Wildcard,
     Variable(Symbol),
     Concrete(Value),
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Atom {
-    pub(crate) table: TableId,
-    pub(crate) slots: Vec<Slot>,
+pub struct Atom {
+    pub table: TableId,
+    pub slots: Vec<Slot>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Query {
-    pub(crate) atoms: Vec<Atom>,
+pub struct Query {
+    pub atoms: Vec<Atom>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Action {
+pub enum Action {
     InsertPattern { atoms: Vec<Atom> },
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Rule {
-    pub(crate) query: Query,
-    pub(crate) action: Action,
+pub struct Rule {
+    pub query: Query,
+    pub action: Action,
 }
 
 #[cfg(test)]

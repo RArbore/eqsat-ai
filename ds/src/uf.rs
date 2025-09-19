@@ -1,4 +1,4 @@
-use core::cell::Cell;
+use core::cell::RefCell;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -18,41 +18,43 @@ impl From<ClassId> for u32 {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnionFind {
-    vec: Vec<Cell<ClassId>>,
+    vec: RefCell<Vec<ClassId>>,
 }
 
 impl UnionFind {
     pub fn new() -> Self {
-        Self { vec: Vec::new() }
+        Self { vec: RefCell::new(Vec::new()) }
     }
 
     pub fn new_all_not_equals(amount: u32) -> Self {
         Self {
-            vec: (0..amount).map(|idx| Cell::new(ClassId(idx))).collect(),
+            vec: RefCell::new((0..amount).map(|idx| ClassId(idx)).collect()),
         }
     }
 
     pub fn new_all_equals(amount: u32) -> Self {
         Self {
-            vec: vec![Cell::new(ClassId(0)); amount as usize],
+            vec: RefCell::new(vec![ClassId(0); amount as usize]),
         }
     }
 
-    pub fn set_all_not_equals(&mut self) {
-        for idx in 0..self.vec.len() {
-            self.vec[idx] = Cell::new(ClassId::from(idx as u32));
+    pub fn set_all_not_equals(&self) {
+        let mut vec = self.vec.borrow_mut();
+        for idx in 0..vec.len() {
+            vec[idx] = ClassId::from(idx as u32);
         }
     }
 
-    pub fn makeset(&mut self) -> ClassId {
-        let len = self.vec.len();
+    pub fn makeset(&self) -> ClassId {
+        let mut vec = self.vec.borrow_mut();
+        let len = vec.len();
         let id = ClassId(len.try_into().unwrap());
-        self.vec.push(Cell::new(id));
+        vec.push(id);
         id
     }
 
     pub fn num_classes(&self) -> u32 {
-        self.vec.len().try_into().unwrap()
+        self.vec.borrow().len().try_into().unwrap()
     }
 
     pub fn find(&self, mut id: ClassId) -> ClassId {
@@ -65,12 +67,12 @@ impl UnionFind {
 
     #[inline]
     fn parent(&self, id: ClassId) -> ClassId {
-        self.vec[id.0 as usize].get()
+        self.vec.borrow()[id.0 as usize]
     }
 
     #[inline]
     fn set_parent(&self, id: ClassId, parent: ClassId) {
-        self.vec[id.0 as usize].set(parent);
+        self.vec.borrow_mut()[id.0 as usize] = parent;
     }
 
     pub fn merge(&self, mut x: ClassId, mut y: ClassId) -> ClassId {
@@ -103,7 +105,7 @@ mod tests {
 
     #[test]
     fn simple_uf() {
-        let mut uf = UnionFind::new();
+        let uf = UnionFind::new();
         let x = uf.makeset();
         let y = uf.makeset();
         let z = uf.makeset();
@@ -124,7 +126,7 @@ mod tests {
 
     #[test]
     fn complex_uf() {
-        let mut uf = UnionFind::new();
+        let uf = UnionFind::new();
         let mut ids = vec![];
         for _ in 0..1000 {
             ids.push(uf.makeset());

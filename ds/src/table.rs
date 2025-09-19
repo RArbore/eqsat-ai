@@ -40,19 +40,17 @@ struct TableRows<'a> {
     deleted_iter: Peekable<Iter<'a, RowId>>,
 }
 
-pub struct Merger<MF>
-where
-    MF: FnMut(&[Value], &[Value], &mut [Value]),
-{
-    merge_fn: MF,
+pub type MergeFn<'a> = Box<dyn FnMut(&[Value], &[Value], &mut [Value]) + 'a>;
+
+pub struct Merger<'a> {
+    merge_fn: MergeFn<'a>,
     scratch: Vec<Value>,
 }
 
-pub struct Canonizer<CF>
-where
-    CF: FnMut(&[Value], &mut [Value]),
-{
-    canon_fn: CF,
+pub type CanonFn<'a> = Box<dyn FnMut(&[Value], &mut [Value]) + 'a>;
+
+pub struct Canonizer<'a> {
+    canon_fn: CanonFn<'a>,
     scratch: Vec<Value>,
 }
 
@@ -180,18 +178,15 @@ impl<'a> Iterator for TableRows<'a> {
     }
 }
 
-impl<MF> Merger<MF>
-where
-    MF: FnMut(&[Value], &[Value], &mut [Value]),
-{
-    pub fn new(num_columns: usize, merge_fn: MF) -> Self {
+impl<'a> Merger<'a> {
+    pub fn new(num_columns: usize, merge_fn: MergeFn<'a>) -> Self {
         Self {
             merge_fn,
             scratch: vec![0; num_columns],
         }
     }
 
-    pub fn insert<'a, 'b, 'c>(&'a mut self, table: &'b mut Table, row: &'c [Value]) -> &'b [Value] {
+    pub fn insert<'b, 'c, 'd>(&'b mut self, table: &'c mut Table, row: &'d [Value]) -> &'c [Value] {
         let num_determinant = table.num_determinant();
         let would_be_new_id = table.rows.num_rows();
         let (in_row, row_id) = table.insert(row);
@@ -200,11 +195,7 @@ where
             return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
         }
         self.scratch.copy_from_slice(row);
-        (self.merge_fn)(
-            &row,
-            &in_row,
-            &mut self.scratch,
-        );
+        (self.merge_fn)(&row, &in_row, &mut self.scratch);
         if &in_row[num_determinant..] == &mut self.scratch[num_determinant..] {
             let in_row = &in_row[num_determinant..];
             return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
@@ -214,18 +205,15 @@ where
     }
 }
 
-impl<CF> Canonizer<CF>
-where
-    CF: FnMut(&[Value], &mut [Value]),
-{
-    pub fn new(num_columns: usize, canon_fn: CF) -> Self {
+impl<'a> Canonizer<'a> {
+    pub fn new(num_columns: usize, canon_fn: CanonFn<'a>) -> Self {
         Self {
             canon_fn,
             scratch: vec![0; num_columns],
         }
     }
 
-    pub fn canon<'a, 'b>(&'a mut self, row: &'b [Value]) -> Option<&'a [Value]> {
+    pub fn canon<'b, 'c>(&'b mut self, row: &'c [Value]) -> Option<&'b [Value]> {
         (self.canon_fn)(row, &mut self.scratch);
         if self.scratch == row {
             None
@@ -235,14 +223,8 @@ where
     }
 }
 
-pub fn rebuild<CF, MF>(table: &mut Table, mf: MF, cf: CF) -> bool
-where
-    MF: FnMut(&[Value], &[Value], &mut [Value]),
-    CF: FnMut(&[Value], &mut [Value]),
-{
+pub fn rebuild(table: &mut Table, merger: &mut Merger, canonizer: &mut Canonizer) -> bool {
     let num_columns = table.num_determinant() + table.num_dependent();
-    let mut canonizer = Canonizer::new(num_columns, cf);
-    let mut merger = Merger::new(num_columns, mf);
     let mut canonized: Vec<Value> = vec![];
     let mut to_delete: Vec<RowId> = vec![];
     let mut ever_changed = false;
@@ -305,7 +287,7 @@ mod tests {
     #[test]
     fn simple_merge() {
         let mut table = Table::new(2, 1);
-        let mut merger = Merger::new(3, |a, b, dst| dst[2] = min(a[2], b[2]));
+        let mut merger = Merger::new(3, Box::new(|a, b, dst| dst[2] = min(a[2], b[2])));
         merger.insert(&mut table, &[1, 2, 5]);
         merger.insert(&mut table, &[1, 2, 3]);
         merger.insert(&mut table, &[2, 2, 7]);
@@ -320,7 +302,7 @@ mod tests {
 
     #[test]
     fn simple_canon() {
-        let mut canonizer = Canonizer::new(1, |x, dst| dst[0] = (x[0] >> 1) << 1);
+        let mut canonizer = Canonizer::new(1, Box::new(|x, dst| dst[0] = (x[0] >> 1) << 1));
         let row = &[3];
         assert_eq!(canonizer.canon(row), Some(&[2u32] as _));
         let row = &[4];
@@ -345,18 +327,22 @@ mod tests {
         );
 
         uf.merge(id1, id3);
-        rebuild(
-            &mut table,
-            |lhs, rhs, dst| {
+        let mut merger = Merger::new(
+            2,
+            Box::new(|lhs, rhs, dst| {
                 dst[1] = uf
                     .merge(ClassId::from(lhs[1]), ClassId::from(rhs[1]))
                     .into()
-            },
-            |x, dst| {
+            }),
+        );
+        let mut canonizer = Canonizer::new(
+            2,
+            Box::new(|x, dst| {
                 dst[0] = uf.find(ClassId::from(x[0])).into();
                 dst[1] = uf.find(ClassId::from(x[1])).into();
-            },
+            }),
         );
+        rebuild(&mut table, &mut merger, &mut canonizer);
 
         assert_eq!(
             vec![(&[0u32, 1] as _, 0)],
@@ -380,7 +366,11 @@ mod tests {
             table.rows(true).collect::<Vec<_>>()
         );
         assert_eq!(
-            vec![(&[0u32, 1] as _, 0), (&[1u32, 2] as _, 1), (&[2u32, 3] as _, 2)],
+            vec![
+                (&[0u32, 1] as _, 0),
+                (&[1u32, 2] as _, 1),
+                (&[2u32, 3] as _, 2)
+            ],
             table.rows(false).collect::<Vec<_>>()
         );
     }
