@@ -3,26 +3,8 @@ use std::collections::BTreeMap;
 
 use ds::table::Value;
 
-use crate::database::{Database, TableId};
-use crate::frontend::Symbol;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Slot {
-    Wildcard,
-    Variable(Symbol),
-    Concrete(Value),
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Atom {
-    pub(crate) table: TableId,
-    pub(crate) slots: Vec<Slot>,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Query {
-    pub(crate) atoms: Vec<Atom>,
-}
+use crate::database::{Database};
+use crate::frontend::{Slot, Query, Symbol};
 
 pub(crate) fn dumb_product_query(db: &Database, query: &Query) -> Vec<BTreeMap<Symbol, Value>> {
     let mut subquery = query.clone();
@@ -71,9 +53,11 @@ pub(crate) fn dumb_product_query(db: &Database, query: &Query) -> Vec<BTreeMap<S
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use ds::table::Table;
 
-    use crate::frontend::Interner;
+    use crate::frontend::{Interner, Atom};
 
     use super::*;
 
@@ -93,6 +77,7 @@ mod tests {
         table2.insert(&[5, 1]);
         let database = Database {
             tables: vec![table1, table2],
+            table_names: HashMap::new(),
         };
         let query = Query {
             atoms: vec![

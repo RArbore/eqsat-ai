@@ -690,5 +690,7 @@ name = "xlog"
 version = "0.1.0"
 dependencies = [
  "ds",
+ "lalrpop",
+ "lalrpop-util",
  "string-interner",
 ]
