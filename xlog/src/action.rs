@@ -15,7 +15,9 @@ pub fn execute_actions(
         match action {
             Action::InsertPattern { atoms } => {
                 for subst in substs {
-                    for atom in atoms {}
+                    for atom in atoms {
+                        changed = db.insert_atom_with_subst(atom, &subst) || changed;
+                    }
                 }
             }
         }

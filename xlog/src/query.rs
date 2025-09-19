@@ -63,8 +63,8 @@ mod tests {
         let symbol1 = interner.get_or_intern("x");
         let symbol2 = interner.get_or_intern("y");
         let mut database = Database::new();
-        database.register_table(symbol1, 1, 2);
-        database.register_table(symbol2, 1, 1);
+        database.register_table(symbol1, 1, 2, Box::new(|_, _, _| panic!()), Box::new(|_, _| panic!()));
+        database.register_table(symbol2, 1, 1, Box::new(|_, _, _| panic!()), Box::new(|_, _| panic!()));
         let id1 = database.table_id(symbol1);
         let id2 = database.table_id(symbol2);
         let table1 = database.table_mut(id1);

@@ -3,7 +3,7 @@ use core::str::FromStr;
 use crate::database::Database;
 use crate::frontend::*;
 
-grammar(interner: &mut Interner, database: &mut Database);
+grammar<'a>(interner: &mut Interner, database: &mut Database<'a>);
 
 pub Program: Vec<Rule> = {
     => Vec::new(),
@@ -11,14 +11,13 @@ pub Program: Vec<Rule> = {
         p.push(x);
         p
     },
-    <p:Program> <x:Declaration> ";" => {
-        database.register_table(x.0, x.1, x.2);
-        p
-    },
+    <p:Program> Declaration ";" => p,
 }
 
-Declaration: (Symbol, usize, usize) = {
-    ".decl(" <s:Symbol> <det:Usize> <dep:Usize> ")" => (s, det, dep),
+Declaration: () = {
+    ".decl(" <s:Symbol> <det:Usize> <dep:Usize> ")" => {
+        database.register_table(s, det, dep, Box::new(|_, _, _| panic!()), Box::new(|_, _| panic!()));
+    },
 }
 
 Rule: Rule = {

@@ -186,22 +186,22 @@ impl<'a> Merger<'a> {
         }
     }
 
-    pub fn insert<'b, 'c, 'd>(&'b mut self, table: &'c mut Table, row: &'d [Value]) -> &'c [Value] {
+    pub fn insert<'b, 'c, 'd>(&'b mut self, table: &'c mut Table, row: &'d [Value]) -> (&'c [Value], bool) {
         let num_determinant = table.num_determinant();
         let would_be_new_id = table.rows.num_rows();
         let (in_row, row_id) = table.insert(row);
         if row_id == would_be_new_id {
             let in_row = &in_row[num_determinant..];
-            return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
+            return (unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) }, true);
         }
         self.scratch.copy_from_slice(row);
         (self.merge_fn)(&row, &in_row, &mut self.scratch);
         if &in_row[num_determinant..] == &mut self.scratch[num_determinant..] {
             let in_row = &in_row[num_determinant..];
-            return unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) };
+            return (unsafe { from_raw_parts(in_row.as_ptr(), in_row.len()) }, false);
         }
         table.delete(row_id);
-        table.insert(&self.scratch).0
+        (table.insert(&self.scratch).0, true)
     }
 }
 
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn simple_rebuild() {
         let mut table = Table::new(1, 1);
-        let mut uf = UnionFind::new();
+        let uf = UnionFind::new();
 
         let id1 = uf.makeset();
         let id2 = uf.makeset();
