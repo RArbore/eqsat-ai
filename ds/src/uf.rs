@@ -23,7 +23,9 @@ pub struct UnionFind {
 
 impl UnionFind {
     pub fn new() -> Self {
-        Self { vec: RefCell::new(Vec::new()) }
+        Self {
+            vec: RefCell::new(Vec::new()),
+        }
     }
 
     pub fn new_all_not_equals(amount: u32) -> Self {

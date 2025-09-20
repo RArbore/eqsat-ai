@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 
 use ds::table::Value;
 
-use crate::database::{Database};
-use crate::frontend::{Slot, Query, Symbol};
+use crate::database::Database;
+use crate::frontend::{Query, Slot, Symbol};
 
 pub fn dumb_product_query(db: &Database, query: &Query) -> Vec<BTreeMap<Symbol, Value>> {
     let mut subquery = query.clone();

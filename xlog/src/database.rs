@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ds::table::{Canonizer, Merger, Table, Value};
+use ds::table::{Canonizer, Merger, Table, Value, rebuild};
 use ds::uf::{ClassId, UnionFind};
 
 use crate::frontend::{Atom, Schema, SchemaColumn, Slot, Symbol};
@@ -87,6 +87,25 @@ impl<'a> Database<'a> {
         let canon_row = canon.canon(&self.scratch).unwrap_or(&self.scratch);
         let merge = &mut self.mergers[atom.table];
         merge.insert(table, canon_row).1
+    }
+
+    pub fn repair(&mut self) -> bool {
+        let mut ever_changed = false;
+        loop {
+            let mut changed = false;
+            for id in 0..self.tables.len() {
+                changed = rebuild(
+                    &mut self.tables[id],
+                    &mut self.mergers[id],
+                    &mut self.canonizers[id],
+                ) || changed;
+            }
+            if !changed {
+                break ever_changed;
+            } else {
+                ever_changed = true;
+            }
+        }
     }
 }
 
