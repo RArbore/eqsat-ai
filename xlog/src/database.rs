@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::collections::BTreeMap;
 
 use ds::table::{Canonizer, Merger, Table, Value, rebuild};
@@ -109,6 +110,14 @@ impl<'a> Database<'a> {
     }
 }
 
+impl<'a> Debug for Database<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database")
+            .field("tables", &self.tables)
+            .finish()
+    }
+}
+
 fn default_merger(
     schema: &Schema,
     aux_state: DatabaseAuxiliaryState<'_>,
@@ -127,7 +136,10 @@ fn default_merger(
                     .merge(ClassId::from(a[idx]), ClassId::from(b[idx]))
                     .into()
             }
-            _ => todo!(),
+            Int => {
+                assert_eq!(a[idx], b[idx]);
+                dst[idx] = a[idx];
+            }
         }
     }
 }
@@ -147,7 +159,7 @@ fn default_canonizer(
         use SchemaColumn::*;
         match column {
             EClassId => dst[idx] = aux_state.uf.find(ClassId::from(x[idx])).into(),
-            _ => todo!(),
+            Int => dst[idx] = x[idx],
         }
     }
 }
