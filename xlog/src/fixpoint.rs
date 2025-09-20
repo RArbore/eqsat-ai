@@ -34,11 +34,11 @@ mod tests {
     fn simple_graph() {
         let uf = UnionFind::new();
         let mut interner = Interner::new();
-        let mut database = Database::new();
         let aux_state = DatabaseAuxiliaryState { uf: &uf };
+        let mut database = Database::new(aux_state);
         let program = "#Edge(Int Int ->); #Path(Int Int ->); #Success(-> Int); Edge(a b) => Path(a b); Path(a b) Edge(b c) => Path(a c); => Edge(0 1); => Edge(0 2); => Edge(0 3); => Edge(2 4); => Edge(4 3); => Edge(4 5); => Edge(3 0); Path(3 5) => Success(1);";
         let program = ProgramParser::new()
-            .parse(&mut interner, &mut database, &aux_state, &program)
+            .parse(&mut interner, &mut database, &program)
             .unwrap();
         fixpoint(&mut database, &program);
         assert_eq!(
@@ -61,6 +61,33 @@ mod tests {
                 .rows(false)
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn simple_chase() {
+        let uf = UnionFind::new();
+        let mut interner = Interner::new();
+        let aux_state = DatabaseAuxiliaryState { uf: &uf };
+        let mut database = Database::new(aux_state);
+        let program = "#Constant(Int -> EClassId); #Add(EClassId EClassId -> EClassId); Add(x y z) => Add(y x z); => Constant(1 a); => Constant(2 a); Constant(_ a) Constant(_ b) => Add(a b z);";
+        let program = ProgramParser::new()
+            .parse(&mut interner, &mut database, &program)
+            .unwrap();
+        fixpoint(&mut database, &program);
+        assert_eq!(
+            database
+                .table(database.table_id(interner.get_or_intern("Constant")))
+                .rows(false)
+                .count(),
+            2
+        );
+        assert_eq!(
+            database
+                .table(database.table_id(interner.get_or_intern("Add")))
+                .rows(false)
+                .count(),
+            4
         );
     }
 }

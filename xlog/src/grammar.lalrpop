@@ -3,7 +3,7 @@ use core::str::FromStr;
 use crate::database::*;
 use crate::frontend::*;
 
-grammar<'a>(interner: &mut Interner, database: &mut Database<'a>, aux_state: &DatabaseAuxiliaryState<'a>);
+grammar<'a>(interner: &mut Interner, database: &mut Database<'a>);
 
 pub Program: Vec<Rule> = {
     => Vec::new(),
@@ -16,7 +16,7 @@ pub Program: Vec<Rule> = {
 
 Declaration: () = {
     "#" <s:Symbol> "(" <determinant:ColumnList> "->" <dependent:ColumnList> ")" => {
-        database.register_table(s, Schema { determinant, dependent }, aux_state.clone());
+        database.register_table(s, Schema { determinant, dependent });
     },
 }
 

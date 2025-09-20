@@ -1,3 +1,4 @@
+use core::cell::RefCell;
 use core::fmt::Debug;
 use std::collections::BTreeMap;
 
@@ -10,10 +11,12 @@ pub type TableId = usize;
 
 pub struct Database<'a> {
     tables: Vec<Table>,
+    schemas: Vec<Schema>,
     mergers: Vec<Merger<'a>>,
     canonizers: Vec<Canonizer<'a>>,
     table_names: BTreeMap<Symbol, TableId>,
-    scratch: Vec<Value>,
+    scratch: RefCell<Vec<Value>>,
+    aux_state: DatabaseAuxiliaryState<'a>,
 }
 
 #[derive(Clone, Debug)]
@@ -22,28 +25,27 @@ pub struct DatabaseAuxiliaryState<'a> {
 }
 
 impl<'a> Database<'a> {
-    pub fn new() -> Self {
+    pub fn new(aux_state: DatabaseAuxiliaryState<'a>) -> Self {
         Self {
             tables: vec![],
+            schemas: vec![],
             mergers: vec![],
             canonizers: vec![],
             table_names: BTreeMap::new(),
-            scratch: vec![],
+            scratch: RefCell::new(vec![]),
+            aux_state,
         }
     }
 
-    pub fn register_table(
-        &mut self,
-        sym: Symbol,
-        schema: Schema,
-        aux_state: DatabaseAuxiliaryState<'a>,
-    ) {
+    pub fn register_table(&mut self, sym: Symbol, schema: Schema) {
         assert!(!self.table_names.contains_key(&sym));
         let id = self.tables.len();
         let num_determinant = schema.determinant.len();
         let num_dependent = schema.dependent.len();
         self.tables.push(Table::new(num_determinant, num_dependent));
+        self.schemas.push(schema.clone());
 
+        let aux_state = self.aux_state.clone();
         let other_schema = schema.clone();
         let other_aux_state = aux_state.clone();
         let merger = Box::new(move |a: &[Value], b: &[Value], dst: &mut [Value]| {
@@ -72,22 +74,41 @@ impl<'a> Database<'a> {
         &mut self.tables[id]
     }
 
+    pub fn schema(&self, id: TableId) -> &Schema {
+        &self.schemas[id]
+    }
+
     pub fn insert_atom_with_subst(&mut self, atom: &Atom, subst: &BTreeMap<Symbol, Value>) -> bool {
         let table = &mut self.tables[atom.table];
-        self.scratch
-            .resize(table.num_determinant() + table.num_dependent(), 0);
+        let mut scratch = self.scratch.borrow_mut();
+        scratch.resize(atom.slots.len(), 0);
         for (idx, slot) in atom.slots.iter().enumerate() {
             let value = match slot {
                 Slot::Wildcard => panic!(),
                 Slot::Variable(sym) => subst[&sym],
                 Slot::Concrete(value) => *value,
             };
-            self.scratch[idx] = value;
+            scratch[idx] = value;
         }
         let canon = &mut self.canonizers[atom.table];
-        let canon_row = canon.canon(&self.scratch).unwrap_or(&self.scratch);
+        let canon_row = canon.canon(&scratch).unwrap_or(&scratch);
         let merge = &mut self.mergers[atom.table];
         merge.insert(table, canon_row).1
+    }
+
+    pub fn get_with_subst(&self, atom: &Atom, subst: &BTreeMap<Symbol, Value>) -> Option<&[Value]> {
+        let table = &self.tables[atom.table];
+        let mut scratch = self.scratch.borrow_mut();
+        scratch.resize(table.num_determinant(), 0);
+        for idx in 0..table.num_determinant() {
+            let value = match atom.slots[idx] {
+                Slot::Wildcard => panic!(),
+                Slot::Variable(sym) => subst[&sym],
+                Slot::Concrete(value) => value,
+            };
+            scratch[idx] = value;
+        }
+        table.get(&scratch)
     }
 
     pub fn repair(&mut self) -> bool {
@@ -107,6 +128,10 @@ impl<'a> Database<'a> {
                 ever_changed = true;
             }
         }
+    }
+
+    pub fn aux_state(&self) -> &DatabaseAuxiliaryState<'a> {
+        &self.aux_state
     }
 }
 

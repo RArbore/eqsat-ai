@@ -131,6 +131,20 @@ impl Table {
         }
     }
 
+    pub fn get<'a, 'b>(&'a self, determinant: &'b [Value]) -> Option<&'a [Value]> {
+        let num_determinant = self.num_determinant();
+        assert_eq!(determinant.len(), num_determinant);
+        let hash = hash(determinant);
+        let te = self.table.find(hash, |te| {
+            te.hash == hash && &self.rows.get_row(te.row)[0..num_determinant] == determinant
+        });
+        if let Some(te) = te {
+            Some(&self.rows.get_row(te.row)[num_determinant..])
+        } else {
+            None
+        }
+    }
+
     pub fn delete(&mut self, row_id: RowId) -> &[Value] {
         let row = self.rows.get_row(row_id);
         let determinant = &row[0..self.num_determinant()];

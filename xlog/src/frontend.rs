@@ -4,7 +4,7 @@ use string_interner::symbol::SymbolU16;
 
 use ds::table::Value;
 
-use crate::database::TableId;
+use crate::database::{Database, TableId};
 
 pub type Symbol = SymbolU16;
 pub type Interner = StringInterner<StringBackend<Symbol>>;
@@ -50,6 +50,42 @@ pub enum SchemaColumn {
     Int,
 }
 
+impl Slot {
+    pub fn try_variable(&self) -> Option<Symbol> {
+        if let Slot::Variable(sym) = self {
+            Some(*sym)
+        } else {
+            None
+        }
+    }
+}
+
+impl Atom {
+    pub fn determinant_variables<'a, 'b>(
+        &'a self,
+        db: &'b Database,
+    ) -> impl Iterator<Item = (usize, Symbol)> + 'a {
+        let num_determinant = db.table(self.table).num_determinant();
+        let slots = &self.slots[0..num_determinant];
+        slots
+            .into_iter()
+            .enumerate()
+            .filter_map(|(idx, slot)| slot.try_variable().map(|var| (idx, var)))
+    }
+
+    pub fn dependent_variables<'a, 'b>(
+        &'a self,
+        db: &'b Database,
+    ) -> impl Iterator<Item = (usize, Symbol)> + 'a {
+        let num_determinant = db.table(self.table).num_determinant();
+        let slots = &self.slots[num_determinant..];
+        slots
+            .into_iter()
+            .enumerate()
+            .filter_map(|(idx, slot)| slot.try_variable().map(|var| (idx, var)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ds::uf::UnionFind;
@@ -63,14 +99,14 @@ mod tests {
     fn parse1() {
         let uf = UnionFind::new();
         let mut interner = Interner::new();
-        let mut database = Database::new();
         let aux_state = DatabaseAuxiliaryState { uf: &uf };
+        let mut database = Database::new(aux_state);
         let program = "#Add(EClassId EClassId -> EClassId); Add(x y z) => Add(y x z);";
         assert_eq!(
             format!(
                 "{:?}",
                 ProgramParser::new()
-                    .parse(&mut interner, &mut database, &aux_state, &program)
+                    .parse(&mut interner, &mut database, &program)
                     .unwrap()
             ),
             "[Rule { query: Query { atoms: [Atom { table: 0, slots: [Variable(SymbolU16 { value: 2 }), Variable(SymbolU16 { value: 3 }), Variable(SymbolU16 { value: 4 })] }] }, action: InsertPattern { atoms: [Atom { table: 0, slots: [Variable(SymbolU16 { value: 3 }), Variable(SymbolU16 { value: 2 }), Variable(SymbolU16 { value: 4 })] }] } }]"
