@@ -38,23 +38,39 @@ pub struct Rule {
     pub action: Action,
 }
 
+#[derive(Clone, Debug)]
+pub struct Schema {
+    pub determinant: Vec<SchemaColumn>,
+    pub dependent: Vec<SchemaColumn>,
+}
+
+#[derive(Clone, Debug)]
+pub enum SchemaColumn {
+    EClassId,
+    Int,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use ds::uf::UnionFind;
 
-    use crate::database::Database;
+    use crate::database::{Database, DatabaseAuxiliaryState};
     use crate::grammar::ProgramParser;
+
+    use super::*;
 
     #[test]
     fn parse1() {
+        let uf = UnionFind::new();
         let mut interner = Interner::new();
         let mut database = Database::new();
-        let program = ".decl(Add 2 1); Add(x y z) => Add(y x z);";
+        let aux_state = DatabaseAuxiliaryState { uf: &uf };
+        let program = "#Add(EClassId EClassId -> EClassId); Add(x y z) => Add(y x z);";
         assert_eq!(
             format!(
                 "{:?}",
                 ProgramParser::new()
-                    .parse(&mut interner, &mut database, &program)
+                    .parse(&mut interner, &mut database, &aux_state, &program)
                     .unwrap()
             ),
             "[Rule { query: Query { atoms: [Atom { table: 0, slots: [Variable(SymbolU16 { value: 2 }), Variable(SymbolU16 { value: 3 }), Variable(SymbolU16 { value: 4 })] }] }, action: InsertPattern { atoms: [Atom { table: 0, slots: [Variable(SymbolU16 { value: 3 }), Variable(SymbolU16 { value: 2 }), Variable(SymbolU16 { value: 4 })] }] } }]"

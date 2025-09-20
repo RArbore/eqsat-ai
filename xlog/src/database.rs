@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
-use ds::table::{CanonFn, Canonizer, MergeFn, Merger, Table, Value};
+use ds::table::{Canonizer, Merger, Table, Value};
+use ds::uf::{ClassId, UnionFind};
 
-use crate::frontend::{Atom, Slot, Symbol};
+use crate::frontend::{Atom, Schema, SchemaColumn, Slot, Symbol};
 
 pub type TableId = usize;
 
@@ -12,6 +13,11 @@ pub struct Database<'a> {
     canonizers: Vec<Canonizer<'a>>,
     table_names: BTreeMap<Symbol, TableId>,
     scratch: Vec<Value>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DatabaseAuxiliaryState<'a> {
+    pub uf: &'a UnionFind,
 }
 
 impl<'a> Database<'a> {
@@ -28,16 +34,28 @@ impl<'a> Database<'a> {
     pub fn register_table(
         &mut self,
         sym: Symbol,
-        num_determinant: usize,
-        num_dependent: usize,
-        merger: MergeFn<'a>,
-        canonizer: CanonFn<'a>,
+        schema: Schema,
+        aux_state: DatabaseAuxiliaryState<'a>,
     ) {
         assert!(!self.table_names.contains_key(&sym));
         let id = self.tables.len();
+        let num_determinant = schema.determinant.len();
+        let num_dependent = schema.dependent.len();
         self.tables.push(Table::new(num_determinant, num_dependent));
-        self.mergers.push(Merger::new(num_determinant + num_dependent, merger));
-        self.canonizers.push(Canonizer::new(num_determinant + num_dependent, canonizer));
+
+        let other_schema = schema.clone();
+        let other_aux_state = aux_state.clone();
+        let merger = Box::new(move |a: &[Value], b: &[Value], dst: &mut [Value]| {
+            default_merger(&schema, aux_state.clone(), a, b, dst)
+        });
+        let canonizer = Box::new(move |x: &[Value], dst: &mut [Value]| {
+            default_canonizer(&other_schema, other_aux_state.clone(), x, dst)
+        });
+
+        self.mergers
+            .push(Merger::new(num_determinant + num_dependent, merger));
+        self.canonizers
+            .push(Canonizer::new(num_determinant + num_dependent, canonizer));
         self.table_names.insert(sym, id);
     }
 
@@ -69,5 +87,48 @@ impl<'a> Database<'a> {
         let canon_row = canon.canon(&self.scratch).unwrap_or(&self.scratch);
         let merge = &mut self.mergers[atom.table];
         merge.insert(table, canon_row).1
+    }
+}
+
+fn default_merger(
+    schema: &Schema,
+    aux_state: DatabaseAuxiliaryState<'_>,
+    a: &[Value],
+    b: &[Value],
+    dst: &mut [Value],
+) {
+    let num_determinant = schema.determinant.len();
+    for (idx, column) in schema.dependent.iter().enumerate() {
+        let idx = idx + num_determinant;
+        use SchemaColumn::*;
+        match column {
+            EClassId => {
+                dst[idx] = aux_state
+                    .uf
+                    .merge(ClassId::from(a[idx]), ClassId::from(b[idx]))
+                    .into()
+            }
+            _ => todo!(),
+        }
+    }
+}
+
+fn default_canonizer(
+    schema: &Schema,
+    aux_state: DatabaseAuxiliaryState<'_>,
+    x: &[Value],
+    dst: &mut [Value],
+) {
+    for (idx, column) in schema
+        .determinant
+        .iter()
+        .chain(schema.dependent.iter())
+        .enumerate()
+    {
+        use SchemaColumn::*;
+        match column {
+            EClassId => dst[idx] = aux_state.uf.find(ClassId::from(x[idx])).into(),
+            _ => todo!(),
+        }
     }
 }
