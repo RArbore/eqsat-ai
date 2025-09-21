@@ -53,7 +53,7 @@ Action: Action = {
         Action::InsertPattern{ atoms }
     },
     "'" <s:Symbol> "=>" <a:Action> =>? {
-        let func = library.get(&s).ok_or(ParseError::User { error: "unrecognized library function" })?.clone();
+        let func = library.get(&s).ok_or(ParseError::User { error: "Unrecognized library function" })?.clone();
         Ok(Action::ComputeFunc { func, next: Box::new(a) })
     }
 }

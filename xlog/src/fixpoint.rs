@@ -111,7 +111,16 @@ mod tests {
         let aux_state = DatabaseAuxiliaryState { uf: &uf };
         let mut database = Database::new(aux_state);
         let library = FunctionLibrary::new();
-        let program = "#Constant(Int -> EClassId); #Add(EClassId EClassId -> EClassId); Add(x y z) => Add(y x z); Add(a b ab) Add(ab c total) => Add(a bc total) Add(b c bc); => Constant(1 one); => Constant(2 two); => Constant(3 three); Constant(1 one) Constant(2 two) Constant(3 three) => Add(one two one_plus_two) Add(one_plus_two three one_plus_two_plus_three);";
+        let program = r#"
+#Constant(Int -> EClassId);
+#Add(EClassId EClassId -> EClassId);
+Add(x y z) => Add(y x z);
+Add(a b ab) Add(ab c total) => Add(a bc total) Add(b c bc);
+=> Constant(1 one);
+=> Constant(2 two);
+=> Constant(3 three);
+Constant(1 one) Constant(2 two) Constant(3 three) => Add(one two one_plus_two) Add(one_plus_two three one_plus_two_plus_three);
+"#;
         let program = ProgramParser::new()
             .parse(&mut interner, &mut database, &library, &program)
             .unwrap();
