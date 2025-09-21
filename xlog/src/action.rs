@@ -12,12 +12,22 @@ pub fn execute_actions(
     let mut changed = false;
 
     for (action, substs) in action_substs {
-        match action {
-            Action::InsertPattern { atoms } => {
-                for mut subst in substs {
-                    chase(db, &mut subst, atoms);
-                    for atom in atoms {
-                        changed = db.insert_atom_with_subst(atom, &subst) || changed;
+        for mut subst in substs {
+            let mut action = action;
+            loop {
+                match action {
+                    Action::InsertPattern { atoms } => {
+                        chase(db, &mut subst, atoms);
+                        for atom in atoms {
+                            changed = db.insert_atom_with_subst(atom, &subst) || changed;
+                        }
+                        break;
+                    }
+                    Action::ComputeFunc { func, next } => {
+                        if !func(&mut subst) {
+                            break;
+                        }
+                        action = &next;
                     }
                 }
             }
@@ -57,7 +67,7 @@ fn chase(db: &mut Database, subst: &mut BTreeMap<Symbol, Value>, atoms: &Vec<Ato
             if !subst.contains_key(&var) {
                 let val = match schema.dependent[idx] {
                     SchemaColumn::EClassId => db.aux_state().uf.makeset().into(),
-                    SchemaColumn::Int => panic!(),
+                    _ => panic!(),
                 };
                 subst.insert(var, val);
             }

@@ -22,10 +22,14 @@ pub fn fixpoint(db: &mut Database, program: &Vec<Rule>) {
 
 #[cfg(test)]
 mod tests {
+    use core::cmp::max;
+    use std::collections::BTreeMap;
+
+    use ds::table::Value;
     use ds::uf::UnionFind;
 
     use crate::database::{Database, DatabaseAuxiliaryState};
-    use crate::frontend::Interner;
+    use crate::frontend::{Action, Atom, Interner, Query, Rule, Slot, Symbol};
     use crate::grammar::ProgramParser;
 
     use super::*;
@@ -115,6 +119,87 @@ mod tests {
                 .rows(false)
                 .count(),
             12
+        );
+    }
+
+    #[test]
+    fn computed_action() {
+        let uf = UnionFind::new();
+        let mut interner = Interner::new();
+        let aux_state = DatabaseAuxiliaryState { uf: &uf };
+        let mut database = Database::new(aux_state);
+        let program = "#Constant(Int -> EClassId); #Max(EClassId EClassId -> EClassId); => Constant(77 first); => Constant(42 second); Constant(_ first) Constant(_ second) => Max(first second first_plus_second);";
+        let mut program = ProgramParser::new()
+            .parse(&mut interner, &mut database, &program)
+            .unwrap();
+
+        let constant_id = database.table_id(interner.get_or_intern("Constant"));
+        let max_id = database.table_id(interner.get_or_intern("Max"));
+        let lhs_sym = interner.get_or_intern("lhs");
+        let rhs_sym = interner.get_or_intern("rhs");
+        let lhs_cons_sym = interner.get_or_intern("lhs_cons");
+        let rhs_cons_sym = interner.get_or_intern("rhs_cons");
+        let max_sym = interner.get_or_intern("max");
+        let lhs_plus_rhs_sym = interner.get_or_intern("lhs_plus_rhs");
+
+        program.push(Rule {
+            query: Query {
+                atoms: vec![
+                    Atom {
+                        table: constant_id,
+                        slots: vec![Slot::Variable(lhs_cons_sym), Slot::Variable(lhs_sym)],
+                    },
+                    Atom {
+                        table: constant_id,
+                        slots: vec![Slot::Variable(rhs_cons_sym), Slot::Variable(rhs_sym)],
+                    },
+                    Atom {
+                        table: max_id,
+                        slots: vec![
+                            Slot::Variable(lhs_sym),
+                            Slot::Variable(rhs_sym),
+                            Slot::Variable(max_sym),
+                        ],
+                    },
+                ],
+            },
+            action: Action::ComputeFunc {
+                func: Box::new(move |syms: &mut BTreeMap<Symbol, Value>| -> bool {
+                    let lhs = syms[&lhs_cons_sym];
+                    let rhs = syms[&rhs_cons_sym];
+                    syms.insert(lhs_plus_rhs_sym, max(lhs, rhs));
+                    true
+                }),
+                next: Box::new(Action::InsertPattern {
+                    atoms: vec![Atom {
+                        table: constant_id,
+                        slots: vec![Slot::Variable(lhs_plus_rhs_sym), Slot::Variable(max_sym)],
+                    }],
+                }),
+            },
+        });
+
+        fixpoint(&mut database, &program);
+
+        assert_eq!(
+            database
+                .table(database.table_id(interner.get_or_intern("Constant")))
+                .rows(false)
+                .count(),
+            2
+        );
+        assert_eq!(
+            database
+                .table(database.table_id(interner.get_or_intern("Max")))
+                .rows(false)
+                .count(),
+            4
+        );
+        assert!(
+            database
+                .table(database.table_id(interner.get_or_intern("Constant")))
+                .rows(false)
+                .any(|(row, _)| row[0] == 77)
         );
     }
 }

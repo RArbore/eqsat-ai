@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU16;
@@ -27,12 +29,16 @@ pub struct Query {
     pub atoms: Vec<Atom>,
 }
 
-#[derive(Clone, Debug)]
 pub enum Action {
-    InsertPattern { atoms: Vec<Atom> },
+    InsertPattern {
+        atoms: Vec<Atom>,
+    },
+    ComputeFunc {
+        func: Box<dyn Fn(&mut BTreeMap<Symbol, Value>) -> bool>,
+        next: Box<Action>,
+    },
 }
 
-#[derive(Clone, Debug)]
 pub struct Rule {
     pub query: Query,
     pub action: Action,
@@ -102,14 +108,8 @@ mod tests {
         let aux_state = DatabaseAuxiliaryState { uf: &uf };
         let mut database = Database::new(aux_state);
         let program = "#Add(EClassId EClassId -> EClassId); Add(x y z) => Add(y x z);";
-        assert_eq!(
-            format!(
-                "{:?}",
-                ProgramParser::new()
-                    .parse(&mut interner, &mut database, &program)
-                    .unwrap()
-            ),
-            "[Rule { query: Query { atoms: [Atom { table: 0, slots: [Variable(SymbolU16 { value: 2 }), Variable(SymbolU16 { value: 3 }), Variable(SymbolU16 { value: 4 })] }] }, action: InsertPattern { atoms: [Atom { table: 0, slots: [Variable(SymbolU16 { value: 3 }), Variable(SymbolU16 { value: 2 }), Variable(SymbolU16 { value: 4 })] }] } }]"
-        );
+        ProgramParser::new()
+            .parse(&mut interner, &mut database, &program)
+            .unwrap();
     }
 }

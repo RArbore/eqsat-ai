@@ -2,7 +2,7 @@ use core::cell::RefCell;
 use core::fmt::Debug;
 use std::collections::BTreeMap;
 
-use ds::table::{Canonizer, Merger, Table, Value, rebuild};
+use ds::table::{CanonFn, Canonizer, MergeFn, Merger, Table, Value, rebuild};
 use ds::uf::{ClassId, UnionFind};
 
 use crate::frontend::{Atom, Schema, SchemaColumn, Slot, Symbol};
@@ -54,7 +54,27 @@ impl<'a> Database<'a> {
         let canonizer = Box::new(move |x: &[Value], dst: &mut [Value]| {
             default_canonizer(&other_schema, other_aux_state.clone(), x, dst)
         });
+        self.mergers
+            .push(Merger::new(num_determinant + num_dependent, merger));
+        self.canonizers
+            .push(Canonizer::new(num_determinant + num_dependent, canonizer));
 
+        self.table_names.insert(sym, id);
+    }
+
+    pub fn register_custom_table(
+        &mut self,
+        sym: Symbol,
+        schema: Schema,
+        merger: MergeFn<'a>,
+        canonizer: CanonFn<'a>,
+    ) {
+        assert!(!self.table_names.contains_key(&sym));
+        let id = self.tables.len();
+        let num_determinant = schema.determinant.len();
+        let num_dependent = schema.dependent.len();
+        self.tables.push(Table::new(num_determinant, num_dependent));
+        self.schemas.push(schema.clone());
         self.mergers
             .push(Merger::new(num_determinant + num_dependent, merger));
         self.canonizers
@@ -85,7 +105,9 @@ impl<'a> Database<'a> {
         for (idx, slot) in atom.slots.iter().enumerate() {
             let value = match slot {
                 Slot::Wildcard => panic!(),
-                Slot::Variable(sym) => subst[&sym],
+                Slot::Variable(sym) => {
+                    subst[&sym]
+                }
                 Slot::Concrete(value) => *value,
             };
             scratch[idx] = value;
