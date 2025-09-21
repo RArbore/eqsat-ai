@@ -9,3 +9,6 @@ lalrpop = "*"
 [dependencies]
 lalrpop-util = { version = "*", features = ["lexer", "unicode"] }
 string-interner = "*"
+
+ds = { path = "../ds" }
+xlog = { path = "../xlog" }
