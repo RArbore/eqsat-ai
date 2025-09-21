@@ -112,10 +112,8 @@ impl<'a> Database<'a> {
             };
             scratch[idx] = value;
         }
-        let canon = &mut self.canonizers[atom.table];
-        let canon_row = canon.canon(&scratch).unwrap_or(&scratch);
         let merge = &mut self.mergers[atom.table];
-        merge.insert(table, canon_row).1
+        merge.insert(table, &scratch).1
     }
 
     pub fn get_with_subst(&self, atom: &Atom, subst: &BTreeMap<Symbol, Value>) -> Option<&[Value]> {
