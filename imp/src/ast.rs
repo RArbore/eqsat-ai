@@ -14,12 +14,13 @@ pub struct ProgramAST {
 pub struct FunctionAST {
     pub name: Symbol,
     pub params: Vec<Symbol>,
+    pub location: u32,
     pub body: StatementAST,
 }
 
 #[derive(Debug)]
 pub enum StatementAST {
-    Block(Vec<StatementAST>),
+    Block(u32, Vec<StatementAST>),
     Assign(u32, Symbol, ExpressionAST),
     IfElse(u32, ExpressionAST, Box<StatementAST>, Option<Box<StatementAST>>),
     While(u32, ExpressionAST, Box<StatementAST>),

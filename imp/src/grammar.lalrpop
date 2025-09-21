@@ -17,7 +17,11 @@ FuncList: Vec<FunctionAST> = {
 }
 
 Func: FunctionAST = {
-    "fn" <i:Iden> "(" <p:Params> ")" <s:Stmt> => FunctionAST { name: interner.get_or_intern(i), params: p, body: s },
+    "fn" <i:Iden> "(" <p:Params> ")" <s:Stmt> => {
+        let loc = *location;
+        *location += 1;
+        FunctionAST { name: interner.get_or_intern(i), params: p, location: loc, body: s }
+    }
 }
 
 Params: Vec<Symbol> = {
@@ -44,7 +48,11 @@ StmtList: Vec<StatementAST> = {
 }
 
 Block: StatementAST = {
-    "{" <StmtList> "}" => StatementAST::Block(<>),
+    "{" <StmtList> "}" => {
+        let loc = *location;
+        *location += 1;
+        StatementAST::Block(loc, <>)
+    }
 }
 
 Stmt: StatementAST = {
