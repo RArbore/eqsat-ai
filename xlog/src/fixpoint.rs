@@ -158,7 +158,7 @@ Constant(1 one) Constant(2 two) Constant(3 three) => Add(one two one_plus_two) A
             Rc::new(move |syms: &mut BTreeMap<Symbol, Value>| -> bool {
                 let lhs = syms[&lhs_cons_sym];
                 let rhs = syms[&rhs_cons_sym];
-                syms.insert(lhs_max_rhs_sym, max(lhs, rhs));
+                syms.insert(lhs_max_rhs_sym, max(max(lhs, rhs), 101));
                 true
             }),
         );
@@ -182,20 +182,20 @@ Constant(lhs_cons lhs) Constant(rhs_cons rhs) Max(lhs rhs max) => 'compute_max =
                 .table(database.table_id(interner.get_or_intern("Constant")))
                 .rows(false)
                 .count(),
-            2
+            3
         );
         assert_eq!(
             database
                 .table(database.table_id(interner.get_or_intern("Max")))
                 .rows(false)
                 .count(),
-            4
+            9
         );
         assert!(
             database
                 .table(database.table_id(interner.get_or_intern("Constant")))
                 .rows(false)
-                .any(|(row, _)| row[0] == 77)
+                .any(|(row, _)| row[0] == 101)
         );
     }
 }
