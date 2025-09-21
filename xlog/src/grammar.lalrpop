@@ -1,9 +1,12 @@
 use core::str::FromStr;
 
+use lalrpop_util::ParseError;
+
 use crate::database::*;
 use crate::frontend::*;
+use crate::fixpoint::FunctionLibrary;
 
-grammar<'a>(interner: &mut Interner, database: &mut Database<'a>);
+grammar<'a>(interner: &mut Interner, database: &mut Database<'a>, library: &FunctionLibrary);
 
 pub Program: Vec<Rule> = {
     => Vec::new(),
@@ -48,6 +51,10 @@ Query: Query = {
 Action: Action = {
     <atoms:AtomList> => {
         Action::InsertPattern{ atoms }
+    },
+    "'" <s:Symbol> "=>" <a:Action> =>? {
+        let func = library.get(&s).ok_or(ParseError::User { error: "unrecognized library function" })?.clone();
+        Ok(Action::ComputeFunc { func, next: Box::new(a) })
     }
 }
 

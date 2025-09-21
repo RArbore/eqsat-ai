@@ -63,6 +63,9 @@ fn chase(db: &mut Database, subst: &mut BTreeMap<Symbol, Value>, atoms: &Vec<Ato
 
     for atom in atoms {
         let schema = db.schema(atom.table);
+        //for (_, var) in atom.determinant_variables(db) {
+        //    assert!(subst.contains_key(&var));
+        //}
         for (idx, var) in atom.dependent_variables(db) {
             if !subst.contains_key(&var) {
                 let val = match schema.dependent[idx] {

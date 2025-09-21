@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU16;
@@ -7,6 +5,7 @@ use string_interner::symbol::SymbolU16;
 use ds::table::Value;
 
 use crate::database::{Database, TableId};
+use crate::fixpoint::ComputeFn;
 
 pub type Symbol = SymbolU16;
 pub type Interner = StringInterner<StringBackend<Symbol>>;
@@ -34,7 +33,7 @@ pub enum Action {
         atoms: Vec<Atom>,
     },
     ComputeFunc {
-        func: Box<dyn Fn(&mut BTreeMap<Symbol, Value>) -> bool>,
+        func: ComputeFn,
         next: Box<Action>,
     },
 }
@@ -97,6 +96,7 @@ mod tests {
     use ds::uf::UnionFind;
 
     use crate::database::{Database, DatabaseAuxiliaryState};
+    use crate::fixpoint::FunctionLibrary;
     use crate::grammar::ProgramParser;
 
     use super::*;
@@ -107,9 +107,10 @@ mod tests {
         let mut interner = Interner::new();
         let aux_state = DatabaseAuxiliaryState { uf: &uf };
         let mut database = Database::new(aux_state);
+        let library = FunctionLibrary::new();
         let program = "#Add(EClassId EClassId -> EClassId); Add(x y z) => Add(y x z);";
         ProgramParser::new()
-            .parse(&mut interner, &mut database, &program)
+            .parse(&mut interner, &mut database, &library, &program)
             .unwrap();
     }
 }
