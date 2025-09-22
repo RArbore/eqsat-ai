@@ -33,7 +33,9 @@ ColumnList: Vec<SchemaColumn> = {
 
 Column: SchemaColumn = {
     "EClassId" => SchemaColumn::EClassId,
+    "Symbol" => SchemaColumn::Symbol,
     "Int" => SchemaColumn::Int,
+    "CustomLattice" => SchemaColumn::CustomLattice,
 }
 
 Rule: Rule = {

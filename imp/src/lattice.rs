@@ -1,3 +1,5 @@
+use ds::table::Value;
+
 pub trait JoinSemilattice {
     fn bottom() -> Self;
     fn join(&self, other: &Self) -> Self;
@@ -89,8 +91,7 @@ impl MeetSemilattice for Reachability {
     }
 
     fn leq(&self, other: &Self) -> bool {
-        use Reachability::*;
-        *self == Reachable || *other == Unreachable
+        JoinSemilattice::leq(self, other)
     }
 }
 
@@ -100,8 +101,8 @@ impl Widenable for Reachability {
     }
 }
 
-impl From<u32> for Reachability {
-    fn from(value: u32) -> Self {
+impl From<Value> for Reachability {
+    fn from(value: Value) -> Self {
         match value {
             0 => Reachability::Unreachable,
             1 => Reachability::Reachable,
@@ -110,11 +111,85 @@ impl From<u32> for Reachability {
     }
 }
 
-impl From<Reachability> for u32 {
+impl From<Reachability> for Value {
     fn from(value: Reachability) -> Self {
         match value {
             Reachability::Unreachable => 0,
             Reachability::Reachable => 1,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Constant {
+    Top,
+    Value(i32),
+    Bottom,
+}
+
+impl JoinSemilattice for Constant {
+    fn bottom() -> Self {
+        Constant::Bottom
+    }
+
+    fn join(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Constant::Bottom, x) | (x, Constant::Bottom) => *x,
+            (x, y) if x == y => *x,
+            _ => Constant::Top,
+        }
+    }
+
+    fn leq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Constant::Bottom, _) | (_, Constant::Top) => true,
+            (x, y) if x == y => true,
+            _ => false,
+        }
+    }
+}
+
+impl MeetSemilattice for Constant {
+    fn top() -> Self {
+        Constant::Top
+    }
+
+    fn meet(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Constant::Top, x) | (x, Constant::Top) => *x,
+            (x, y) if x == y => *x,
+            _ => Constant::Bottom,
+        }
+    }
+
+    fn leq(&self, other: &Self) -> bool {
+        JoinSemilattice::leq(self, other)
+    }
+}
+
+impl Widenable for Constant {
+    fn widen(&self, other: &Self) -> Self {
+        MeetSemilattice::meet(self, other)
+    }
+}
+
+impl From<[Value; 2]> for Constant {
+    fn from(value: [Value; 2]) -> Self {
+        match value[0] {
+            0 => Constant::Value(value[1].cast_signed()),
+            1 => Constant::Top,
+            2 => Constant::Bottom,
+            _ => panic!(),
+        }
+    }
+}
+
+impl From<Constant> for [Value; 2] {
+    fn from(value: Constant) -> Self {
+        match value {
+            Constant::Value(val) => [0, val.cast_unsigned()],
+            Constant::Top => [1, 0],
+            Constant::Bottom => [2, 0],
         }
     }
 }

@@ -217,11 +217,10 @@ fn default_merger(
                     .merge(ClassId::from(a[idx]), ClassId::from(b[idx]))
                     .into()
             }
-            Int => {
+            Symbol | Int | CustomLattice => {
                 assert_eq!(a[idx], b[idx]);
                 dst[idx] = a[idx];
             }
-            _ => panic!(),
         }
     }
 }
@@ -241,8 +240,7 @@ fn default_canonizer(
         use SchemaColumn::*;
         match column {
             EClassId => dst[idx] = aux_state.uf.find(ClassId::from(x[idx])).into(),
-            Int => dst[idx] = x[idx],
-            _ => panic!(),
+            Symbol | Int | CustomLattice => dst[idx] = x[idx],
         }
     }
 }

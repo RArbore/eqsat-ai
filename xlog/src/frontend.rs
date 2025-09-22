@@ -52,6 +52,7 @@ pub struct Schema {
 #[derive(Clone, Debug)]
 pub enum SchemaColumn {
     EClassId,
+    Symbol,
     Int,
     CustomLattice,
 }
