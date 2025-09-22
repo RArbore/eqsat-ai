@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use ds::table::{CanonFn, Canonizer, MergeFn, Merger, Table, Value, rebuild};
 use ds::uf::{ClassId, UnionFind};
 
-use crate::frontend::{Atom, Schema, SchemaColumn, Slot, Symbol};
+use crate::frontend::{Atom, Interner, Schema, SchemaColumn, Slot, Symbol};
 
 pub type TableId = usize;
 
@@ -105,9 +105,7 @@ impl<'a> Database<'a> {
         for (idx, slot) in atom.slots.iter().enumerate() {
             let value = match slot {
                 Slot::Wildcard => panic!(),
-                Slot::Variable(sym) => {
-                    subst[&sym]
-                }
+                Slot::Variable(sym) => subst[&sym],
                 Slot::Concrete(value) => *value,
             };
             scratch[idx] = value;
@@ -152,6 +150,44 @@ impl<'a> Database<'a> {
 
     pub fn aux_state(&self) -> &DatabaseAuxiliaryState<'a> {
         &self.aux_state
+    }
+
+    pub fn dump(&self, interner: &Interner) {
+        for (name, id) in &self.table_names {
+            let name = interner.resolve(*name).unwrap();
+            print!("#{}(", name);
+            let mut first = true;
+            for col in &self.schemas[*id].determinant {
+                if !first {
+                    print!(" ");
+                }
+                print!("{:?}", col);
+                first = false;
+            }
+            print!(" -> ");
+            let mut first = true;
+            for col in &self.schemas[*id].dependent {
+                if !first {
+                    print!(" ");
+                }
+                print!("{:?}", col);
+                first = false;
+            }
+            println!(")");
+
+            for row in self.tables[*id].rows(false) {
+                print!("{}(", name);
+                let mut first = true;
+                for val in row.0 {
+                    if !first {
+                        print!(" ");
+                    }
+                    print!("{}", val);
+                    first = false;
+                }
+                println!(")");
+            }
+        }
     }
 }
 

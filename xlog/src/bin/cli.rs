@@ -26,6 +26,6 @@ pub fn main() -> Result<()> {
         }
     }
     fixpoint(&mut database, &program);
-    println!("{:?}", database);
+    database.dump(&interner);
     Ok(())
 }
