@@ -1,9 +1,5 @@
-use string_interner::StringInterner;
-use string_interner::backend::StringBackend;
-use string_interner::symbol::SymbolU16;
+use xlog::frontend::Symbol;
 
-pub type Symbol = SymbolU16;
-pub type Interner = StringInterner<StringBackend<Symbol>>;
 pub type Location = u32;
 
 #[derive(Debug)]

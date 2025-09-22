@@ -32,7 +32,7 @@ pub fn abstract_interpret(
                 .meet(&Reachability::from(rhs[1]))
                 .into()
         }),
-        Box::new(|_, _| {}),
+        Box::new(|row, dst| dst.copy_from_slice(row)),
     );
 
     for func in &program.funcs {
@@ -54,19 +54,19 @@ impl<'a, 'b> AIContext<'a, 'b> {
         self.rules.extend(
             ProgramParser::new()
                 .parse(self.interner, self.db, self.library, rule)
-                .unwrap(),
+                .expect(&format!("couldn't parse rule \"{}\"", rule)),
         );
     }
 
     fn ai_func(&mut self, func: &FunctionAST) {
-        self.add_rule(&format!("=> Reach({}, 1);", func.location));
+        self.add_rule(&format!("=> Reach({} 1);", func.location));
         let last_loc = self.ai_stmt(vec![func.location], &func.body);
         assert!(last_loc.is_empty());
     }
 
     fn ai_stmt(&mut self, prior_locs: Vec<Location>, stmt: &StatementAST) -> Vec<Location> {
         for loc in prior_locs {
-            self.add_rule(&format!("Reach({}, 1) => Reach({}, 1);", loc, stmt.loc()));
+            self.add_rule(&format!("Reach({} 1) => Reach({} 1);", loc, stmt.loc()));
         }
 
         use StatementAST::*;

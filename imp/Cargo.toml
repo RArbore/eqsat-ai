@@ -3,6 +3,14 @@ name = "imp"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "imp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "imp-cli"
+path = "src/bin/cli.rs"
+
 [build-dependencies]
 lalrpop = "*"
 

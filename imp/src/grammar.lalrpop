@@ -1,5 +1,7 @@
 use core::str::FromStr;
 
+use xlog::frontend::{Interner, Symbol};
+
 use crate::ast::*;
 
 grammar(interner: &mut Interner, location: &mut Location);
