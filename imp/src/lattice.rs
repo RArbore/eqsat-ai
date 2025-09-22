@@ -10,6 +10,10 @@ pub trait MeetSemilattice {
     fn leq(&self, other: &Self) -> bool;
 }
 
+pub trait Widenable {
+    fn widen(&self, other: &Self) -> Self;
+}
+
 pub trait Lattice {
     fn bottom() -> Self;
     fn top() -> Self;
@@ -87,5 +91,30 @@ impl MeetSemilattice for Reachability {
     fn leq(&self, other: &Self) -> bool {
         use Reachability::*;
         *self == Reachable || *other == Unreachable
+    }
+}
+
+impl Widenable for Reachability {
+    fn widen(&self, other: &Self) -> Self {
+        MeetSemilattice::meet(self, other)
+    }
+}
+
+impl From<u32> for Reachability {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => Reachability::Unreachable,
+            1 => Reachability::Reachable,
+            _ => panic!(),
+        }
+    }
+}
+
+impl From<Reachability> for u32 {
+    fn from(value: Reachability) -> Self {
+        match value {
+            Reachability::Unreachable => 0,
+            Reachability::Reachable => 1,
+        }
     }
 }
