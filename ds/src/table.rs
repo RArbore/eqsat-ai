@@ -205,6 +205,7 @@ impl<'a> Merger<'a> {
         table: &'c mut Table,
         row: &'d [Value],
     ) -> (&'c [Value], bool) {
+        // SAFETY: unsafe blocks needed due to the classic inprecision in the NLL borrow checker.
         let num_determinant = table.num_determinant();
         let would_be_new_id = table.rows.num_rows();
         let (in_row, row_id) = table.insert(row);

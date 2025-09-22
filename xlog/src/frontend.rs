@@ -53,6 +53,7 @@ pub struct Schema {
 pub enum SchemaColumn {
     EClassId,
     Int,
+    CustomLattice,
 }
 
 impl Slot {

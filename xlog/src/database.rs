@@ -185,6 +185,7 @@ fn default_merger(
                 assert_eq!(a[idx], b[idx]);
                 dst[idx] = a[idx];
             }
+            _ => panic!(),
         }
     }
 }
@@ -205,6 +206,7 @@ fn default_canonizer(
         match column {
             EClassId => dst[idx] = aux_state.uf.find(ClassId::from(x[idx])).into(),
             Int => dst[idx] = x[idx],
+            _ => panic!(),
         }
     }
 }
