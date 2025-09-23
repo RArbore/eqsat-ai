@@ -42,21 +42,6 @@ pub fn abstract_interpret(
         Box::new(|row, dst| dst.copy_from_slice(row)),
     );
 
-    db.register_custom_table(
-        interner.get_or_intern("Const"),
-        Schema {
-            determinant: vec![SchemaColumn::Symbol, SchemaColumn::Int],
-            dependent: vec![SchemaColumn::CustomLattice, SchemaColumn::CustomLattice],
-        },
-        Box::new(|lhs, rhs, dst| {
-            let lhs: [Value; 2] = lhs[2..4].try_into().unwrap();
-            let rhs: [Value; 2] = rhs[2..4].try_into().unwrap();
-            let arr: [Value; 2] = Constant::from(lhs).meet(&Constant::from(rhs)).into();
-            dst[2..4].copy_from_slice(&arr);
-        }),
-        Box::new(|row, dst| dst.copy_from_slice(row)),
-    );
-
     for func in &program.funcs {
         let mut state = AIContext::new(db, interner, &mut library, func, &mut rules);
         state.ai_func();
@@ -96,42 +81,15 @@ impl<'a, 'b> AIContext<'a, 'b> {
         self.add_rule(&format!("=> Reach({} 0);", self.func.location));
         self.add_rule(&format!("=> Reach({} 1);", self.func.location));
 
-        for var in self.vars.clone() {
-            self.add_rule(&format!(
-                "=> Const({} {} 1 0);",
-                var.to_usize(),
-                self.func.location
-            ));
-        }
-
-        for param in self.func.params.clone() {
-            self.add_rule(&format!(
-                "=> Const({} {} 2 0);",
-                param.to_usize(),
-                self.func.location
-            ));
-        }
-
         let last_loc = self.ai_stmt(vec![self.func.location], &self.func.body);
         assert!(last_loc.is_empty());
     }
 
     fn ai_stmt(&mut self, prior_locs: Vec<Location>, stmt: &StatementAST) -> Vec<Location> {
         use StatementAST::*;
-        let assigned_var = if let Assign(_, var, _) = stmt {
-            Some(*var)
-        } else {
-            None
-        };
-
         self.add_rule(&format!("=> Reach({} 0);", stmt.loc()));
         for loc in prior_locs {
             self.add_rule(&format!("Reach({} 1) => Reach({} 1);", loc, stmt.loc()));
-            for var in self.vars.clone() {
-                if Some(var) != assigned_var {
-                    self.add_rule(&format!("Reach({} 1) Const({} {} c1 c2) => Const({} {} c1 c2);", loc, var.to_usize(), loc, var.to_usize(), stmt.loc()));
-                }
-            }
         }
 
         match stmt {
@@ -142,7 +100,9 @@ impl<'a, 'b> AIContext<'a, 'b> {
                 }
                 locs
             }
-            Assign(loc, _, _) => vec![*loc],
+            Assign(loc, _, _) => {
+                vec![*loc]
+            }
             IfElse(loc, _, true_stmt, false_stmt) => {
                 let mut locs = self.ai_stmt(vec![*loc], true_stmt);
                 if let Some(false_stmt) = false_stmt {

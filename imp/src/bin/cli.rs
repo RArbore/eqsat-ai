@@ -3,7 +3,7 @@ use std::io::{Read, Result, stdin};
 use ds::uf::UnionFind;
 
 use xlog::database::{Database, DatabaseAuxiliaryState};
-use xlog::fixpoint::{FunctionLibrary, fixpoint};
+use xlog::fixpoint::fixpoint;
 use xlog::frontend::Interner;
 
 use imp::ai::abstract_interpret;
@@ -14,7 +14,6 @@ pub fn main() -> Result<()> {
     let mut interner = Interner::new();
     let aux_state = DatabaseAuxiliaryState { uf: &uf };
     let mut database = Database::new(aux_state);
-    let library = FunctionLibrary::new();
 
     let mut imp_program = String::new();
     stdin().read_to_string(&mut imp_program)?;
