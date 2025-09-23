@@ -14,8 +14,10 @@ struct AIContext<'a, 'b> {
     db: &'a mut Database<'b>,
     interner: &'a mut Interner,
     library: &'a mut FunctionLibrary,
-
+    func: &'a FunctionAST,
     rules: &'a mut Vec<Rule>,
+
+    vars: Vec<Symbol>,
 }
 
 pub fn abstract_interpret(
@@ -56,20 +58,32 @@ pub fn abstract_interpret(
     );
 
     for func in &program.funcs {
-        let mut state = AIContext {
-            db,
-            interner,
-            library: &mut library,
-
-            rules: &mut rules,
-        };
-        state.ai_func(func);
+        let mut state = AIContext::new(db, interner, &mut library, func, &mut rules);
+        state.ai_func();
     }
 
     rules
 }
 
 impl<'a, 'b> AIContext<'a, 'b> {
+    fn new(
+        db: &'a mut Database<'b>,
+        interner: &'a mut Interner,
+        library: &'a mut FunctionLibrary,
+        func: &'a FunctionAST,
+        rules: &'a mut Vec<Rule>,
+    ) -> Self {
+        AIContext {
+            db,
+            interner,
+            library,
+            func,
+            rules,
+
+            vars: collect_vars(func),
+        }
+    }
+
     fn add_rule(&mut self, rule: &str) {
         self.rules.extend(
             ProgramParser::new()
@@ -78,80 +92,48 @@ impl<'a, 'b> AIContext<'a, 'b> {
         );
     }
 
-    fn collect_vars(&mut self, func: &FunctionAST) -> Vec<Symbol> {
-        let mut stmts = vec![&func.body];
-        let mut exprs = vec![];
-        let mut vars = func.params.clone();
+    fn ai_func(&mut self) {
+        self.add_rule(&format!("=> Reach({} 0);", self.func.location));
+        self.add_rule(&format!("=> Reach({} 1);", self.func.location));
 
-        while let Some(stmt) = stmts.pop() {
-            use StatementAST::*;
-            match stmt {
-                Block(_, body) => stmts.extend(body),
-                Assign(_, var, expr) => {
-                    vars.push(*var);
-                    exprs.push(expr);
-                }
-                IfElse(_, cond, true_stmt, false_stmt) => {
-                    exprs.push(cond);
-                    stmts.push(true_stmt);
-                    if let Some(false_stmt) = false_stmt {
-                        stmts.push(false_stmt);
-                    }
-                }
-                While(_, cond, body) => {
-                    exprs.push(cond);
-                    stmts.push(body);
-                }
-                Return(_, expr) => exprs.push(expr),
-            }
+        for var in self.vars.clone() {
+            self.add_rule(&format!(
+                "=> Const({} {} 1 0);",
+                var.to_usize(),
+                self.func.location
+            ));
         }
 
-        while let Some(expr) = exprs.pop() {
-            use ExpressionAST::*;
-            match expr {
-                NumberLiteral(_) => {}
-                Variable(var) => vars.push(*var),
-                Call(_, _) => todo!(),
-                Add(lhs, rhs)
-                | Subtract(lhs, rhs)
-                | Multiply(lhs, rhs)
-                | Divide(lhs, rhs)
-                | Modulo(lhs, rhs)
-                | EqualsEquals(lhs, rhs)
-                | NotEquals(lhs, rhs)
-                | Less(lhs, rhs)
-                | LessEquals(lhs, rhs)
-                | Greater(lhs, rhs)
-                | GreaterEquals(lhs, rhs) => {
-                    exprs.push(lhs);
-                    exprs.push(rhs);
-                }
-            }
+        for param in self.func.params.clone() {
+            self.add_rule(&format!(
+                "=> Const({} {} 2 0);",
+                param.to_usize(),
+                self.func.location
+            ));
         }
 
-        vars
-    }
-
-    fn ai_func(&mut self, func: &FunctionAST) {
-        self.add_rule(&format!("=> Reach({} 0);", func.location));
-        self.add_rule(&format!("=> Reach({} 1);", func.location));
-
-        let vars = self.collect_vars(func);
-        for var in vars {
-            self.add_rule(&format!("=> Const({} {} 1 0);", var.to_usize(), func.location));
-        }
-
-        let last_loc = self.ai_stmt(vec![func.location], &func.body);
+        let last_loc = self.ai_stmt(vec![self.func.location], &self.func.body);
         assert!(last_loc.is_empty());
     }
 
     fn ai_stmt(&mut self, prior_locs: Vec<Location>, stmt: &StatementAST) -> Vec<Location> {
+        use StatementAST::*;
+        let assigned_var = if let Assign(_, var, _) = stmt {
+            Some(*var)
+        } else {
+            None
+        };
+
         self.add_rule(&format!("=> Reach({} 0);", stmt.loc()));
         for loc in prior_locs {
             self.add_rule(&format!("Reach({} 1) => Reach({} 1);", loc, stmt.loc()));
+            for var in self.vars.clone() {
+                if Some(var) != assigned_var {
+                    self.add_rule(&format!("Reach({} 1) Const({} {} c1 c2) => Const({} {} c1 c2);", loc, var.to_usize(), loc, var.to_usize(), stmt.loc()));
+                }
+            }
         }
 
-        use StatementAST::*;
         match stmt {
             Block(loc, stmts) => {
                 let mut locs = vec![*loc];
@@ -180,4 +162,58 @@ impl<'a, 'b> AIContext<'a, 'b> {
             Return(_, _) => vec![],
         }
     }
+}
+
+fn collect_vars(func: &FunctionAST) -> Vec<Symbol> {
+    let mut stmts = vec![&func.body];
+    let mut exprs = vec![];
+    let mut vars = func.params.clone();
+
+    while let Some(stmt) = stmts.pop() {
+        use StatementAST::*;
+        match stmt {
+            Block(_, body) => stmts.extend(body),
+            Assign(_, var, expr) => {
+                vars.push(*var);
+                exprs.push(expr);
+            }
+            IfElse(_, cond, true_stmt, false_stmt) => {
+                exprs.push(cond);
+                stmts.push(true_stmt);
+                if let Some(false_stmt) = false_stmt {
+                    stmts.push(false_stmt);
+                }
+            }
+            While(_, cond, body) => {
+                exprs.push(cond);
+                stmts.push(body);
+            }
+            Return(_, expr) => exprs.push(expr),
+        }
+    }
+
+    while let Some(expr) = exprs.pop() {
+        use ExpressionAST::*;
+        match expr {
+            NumberLiteral(_) => {}
+            Variable(var) => vars.push(*var),
+            Call(_, _) => todo!(),
+            Add(lhs, rhs)
+            | Subtract(lhs, rhs)
+            | Multiply(lhs, rhs)
+            | Divide(lhs, rhs)
+            | Modulo(lhs, rhs)
+            | EqualsEquals(lhs, rhs)
+            | NotEquals(lhs, rhs)
+            | Less(lhs, rhs)
+            | LessEquals(lhs, rhs)
+            | Greater(lhs, rhs)
+            | GreaterEquals(lhs, rhs) => {
+                exprs.push(lhs);
+                exprs.push(rhs);
+            }
+        }
+    }
+
+    vars
 }
